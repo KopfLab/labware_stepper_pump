@@ -28,3 +28,6 @@
 *.exe
 *.out
 *.app
+
+# Web control
+*.html
