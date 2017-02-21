@@ -1,3 +1,8 @@
+// return codes
+#define CMD_RET_SUCCESS   0
+#define CMD_RET_WARNING   1
+#define CMD_RET_ERROR    -1
+
 // commands
 #define CMD_ROOT        "pump" // command root
 
@@ -43,4 +48,4 @@
 #define ERROR_DIR       "unknown direction"
 #define ERROR_MS        "unknown microstepping"
 #define ERROR_SPEED     "unknown speed"
-#define ERROR_SPEED_MAX "speed exceeds maximum of"
+#define WARN_SPEED_MAX  "speed set to maximum of"

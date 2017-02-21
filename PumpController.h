@@ -26,58 +26,54 @@ struct StepperPins {
     dir(dir), step(step), enable(enable), ms1(ms1), ms2(ms2), ms3(ms3) {};
 };
 
-// mode constants
-#define DIR_CW    1
-#define DIR_CC   -1
-
-// microstep modes
+// microstep mode structur (driver chip specific)
+#define MS_MODE_AUTO  -1 // code for automatic determination of microstep modes
 struct MicrostepMode {
-  const int mode; // the mode for the ms mode
-  const bool ms1; // HIGH or LOW for ms1
-  const bool ms2; // HIGH or LOW for ms2
-  const bool ms3; // HIGH or LOW for ms3
+  int mode; // the mode for the ms mode
+  bool ms1; // HIGH or LOW for ms1
+  bool ms2; // HIGH or LOW for ms2
+  bool ms3; // HIGH or LOW for ms3
+  float rpm_limit; // the RPM limit for this microstepping mode (filled by PumpController later)
+  MicrostepMode() {};
+  MicrostepMode(int mode, bool ms1, bool ms2, bool ms3) :
+    mode(mode), ms1(ms1), ms2(ms2), ms3(ms3), rpm_limit(-1) {}
 };
 
-// microstep modes for DRV8825
-// NOTE: these may vary for different stepper chips
-#define MS_MODE_AUTO 0 // the key for automatic determination of microstep modes
-#define MS_MODES_N   6 // the number of defined stepping modes
-const MicrostepMode ms_modes[MS_MODES_N] =
-  {
-    {1,  LOW,  LOW,  LOW},  // full step
-    {2,  HIGH, LOW,  LOW},  // half step
-    {4,  LOW,  HIGH, LOW},  // quarter step
-    {8,  HIGH, HIGH, LOW},  // eight step
-    {16, LOW,  LOW,  HIGH}, // sixteenth step
-    {32, HIGH, LOW,  HIGH},  // 1/32 step
-  };
-
-// return codes for webhook
-#define CMD_RET_SUCCESS   0
-#define CMD_RET_ERROR    -1
-
-// settings
-// TODO: expand the additional settings for the pump that need to be
-// stored in order to recreate the previous state on power off/on
-// NOTE: not all of these need to / should be accessible via constructor
-#define STATUS_ON       1
-#define STATUS_OFF      2
-#define STATUS_HOLD     3
-#define STATUS_ROTATE   4
+// pump settings (microcontroller and pump stepper specific)
 struct PumpSettings {
-  double step_angle; // angle/step
-  double step_flow; // mass/step
-  int direction; // -1 or 1
-  int microstep; // MS_AUTO or
-  float max_speed; // steps/s
-  float speed; // steps/s
-  int status; // STATUS_ON, OFF, HOLD
-  PumpSettings() {};
-  PumpSettings(double step_angle, double step_flow, int direction, int microstep, float max_speed, float speed) :
-    step_angle(step_angle), step_flow(step_flow), direction(direction), microstep(microstep), max_speed(max_speed), speed(speed), status(STATUS_OFF) {};
+public:
+  int steps; // numer of steps / rotation
+  double gearing; // the gearing (if any, otherwise should be 1)
+  float max_speed; // maximum # of steps/s the processor can reliably support (i.e. how often can the PumpController::update() be called?)
+
+  PumpSettings(int steps, double gearing, float max_speed) :
+    steps(steps), gearing(gearing), max_speed(max_speed) {};
+
 };
 
-// command
+// pump state
+// TODO: these should be possible to store permanently in EEPROM and restore pump state from there
+#define DIR_CW           1
+#define DIR_CC          -1
+#define STATUS_ON        1
+#define STATUS_OFF       2
+#define STATUS_HOLD      3
+#define STATUS_ROTATE    4
+#define STEP_FLOW_UNDEF -1
+struct PumpState {
+  int direction; // DIR_CW or DIR_CC
+  int ms_index; // MS_MODE_AUTO or index of the selected microstep mode
+  int ms_mode; // stores the actual ms_mode that is active (just for convenience)
+  int status; // STATUS_ON, OFF, HOLD
+  float rpm; // speed in rotations / minute (actual speed in steps/s depends on microstepping mode)
+  double step_flow; // mass/step calibration
+
+  PumpState() {};
+  PumpState(int direction, int ms_index, int status, float rpm, double step_flow) :
+    direction(direction), ms_index(ms_index), status(status), rpm(rpm), step_flow(step_flow) {};
+};
+
+// command from spark cloud
 struct PumpCommand {
   char buffer[63]; //(spark.functions are limited to 63 char long call)
   char type[20];
@@ -91,29 +87,31 @@ struct PumpCommand {
   }
 };
 
-// class
+// actual pump controller class
 class PumpController {
 
   private:
 
-    const StepperPins pins; // pins
     AccelStepper stepper; // stepper
+    const StepperPins pins; // pins
+    const int ms_modes_n; // number of microstepping modes
+    MicrostepMode* ms_modes; // microstepping modes
+    const PumpSettings settings; // settings
 
     // internal functions
     void extractCommandParam(char* param);
     void assignCommandMessage();
     void updateStatus();
     void updateStatus(int status);
+    float calculateSpeed();
+    int findAutoMicrostepIndex(float rpm);
+    int activateMicrostepping(int ms_index, float rpm);
+    bool setSpeedWithSteppingLimit(int ms_index, float rpm); // sets state.speed and returns true if request set, false if had to set to limit
 
   public:
 
-    float getRotationSteps();
-    float rpmToSpeed(float rpm);
-    float speedToRpm(float speed); // convert any speed
-    float getRpm(); // convert set speed
-
-    // settings
-    PumpSettings settings;
+    // state
+    PumpState state;
 
     // command
     PumpCommand command;
@@ -122,26 +120,39 @@ class PumpController {
     typedef void (*PumpCommandCallbackType) (const PumpController&);
 
     // constructors
-    PumpController (StepperPins pins, PumpSettings settings,
-      PumpCommandCallbackType callback) :
-    pins(pins), settings(settings), command_callback(callback) {
+    PumpController (StepperPins pins, MicrostepMode* ms_modes, int ms_modes_n,
+      PumpSettings settings, PumpState state, PumpCommandCallbackType callback) :
+    pins(pins), ms_modes_n(ms_modes_n), settings(settings), state(state), command_callback(callback) {
       Particle.function(CMD_ROOT, &PumpController::parseCommand, this);
+      // allocate microstep modes and calculate rpm limits for each
+      this->ms_modes = new MicrostepMode[ms_modes_n];
+      for (int i = 0; i < ms_modes_n; i++) {
+        this->ms_modes[i] = ms_modes[i];
+        this->ms_modes[i].rpm_limit = settings.max_speed * 60.0 / (settings.steps * settings.gearing * ms_modes[i].mode);
+      }
     }
 
-    void init();
-    bool setMicrostepping(int ms);
+    // destructor (deallocate ms_modes)
+    virtual ~PumpController(){
+       delete[] ms_modes;
+    }
 
-    int parseCommand (String command);
+    // methods
+    void init(); // to be run during setup()
+    void update(); // to be run during loop()
 
-    void setDirection(int direction);
-    float setSpeedRpm(float rpm); // returns speed in step/s
+    bool setMicrosteppingMode(int ms_mode); // set microstepping by mode, return false if can't find requested mode
+    bool setSpeedRpm(float rpm); // return false if had to limit speed, true if taking speed directly
+    void setDirection(int direction); // set direction
 
-    void start();
-    void stop();
-    void hold();
+    void start(); // start the pump
+    void stop(); // stop the pump
+    void hold(); // hold position
     long rotate(double number); // returns the number of steps the motor will take
 
-    void update(); // run in loop
+    int parseCommand (String command); // parse a cloud command
 
-    private: PumpCommandCallbackType command_callback;
+  // pump command callback
+  private: PumpCommandCallbackType command_callback;
+
 };

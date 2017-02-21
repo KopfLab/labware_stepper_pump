@@ -1,5 +1,7 @@
 #include "PumpController.h"
 
+/**** SETUP AND LOOP ****/
+
 void PumpController::init() {
   stepper = AccelStepper(AccelStepper::DRIVER, pins.step, pins.dir);
   stepper.setEnablePin(pins.enable);
@@ -10,36 +12,168 @@ void PumpController::init() {
         );
   stepper.disableOutputs();
   stepper.setMaxSpeed(settings.max_speed);
-  stepper.setSpeed(settings.direction * settings.speed);
 
   // microstepping
   pinMode(pins.ms1, OUTPUT);
   pinMode(pins.ms2, OUTPUT);
   pinMode(pins.ms3, OUTPUT);
-  setMicrostepping(settings.microstep);
+  Serial.println("INFO: available microstepping modes");
+  for (int i = 0; i < ms_modes_n; i++) {
+    Serial.println("   Mode " + String(i) + ": " + String(ms_modes[i].mode) +
+      " steps, max rpm: " + String(ms_modes[i].rpm_limit));
+  }
+
+  // initialize / restore pump state
+  // TODO: load pump state from EEPROM here
+  activateMicrostepping(state.ms_index, state.rpm);
+  updateStatus();
 }
 
-bool PumpController::setMicrostepping(int ms) {
-
-  if (ms == MS_MODE_AUTO) {
-    Serial.println("INFO: switching to automatic microstepping mode");
-    settings.microstep = MS_MODE_AUTO;
-    return(true);
+// loop function
+void PumpController::update() {
+  if (state.status == STATUS_ROTATE) {
+    if (stepper.distanceToGo() == 0) {
+      updateStatus(STATUS_OFF); // disengage if reached target location
+    } else {
+      stepper.runSpeedToPosition();
+    }
   } else {
-    for (int i = 0; i < MS_MODES_N; i++) {
-      Serial.println("checking " + String(ms_modes[i].mode));
-      if (ms_modes[i].mode == ms) {
-        Serial.println("found " + String(ms_modes[i].mode));
-        settings.microstep = ms;
-        digitalWrite(pins.ms1, ms_modes[i].ms1);
-        digitalWrite(pins.ms2, ms_modes[i].ms2);
-        digitalWrite(pins.ms3, ms_modes[i].ms3);
-        return(true);
+    stepper.runSpeed();
+  }
+}
+
+/**** UPDATING PUMP STATUS ****/
+
+void PumpController::updateStatus() {
+  Serial.println("INFO: updating status");
+  if (state.status == STATUS_ON) {
+    stepper.setSpeed(calculateSpeed());
+    stepper.enableOutputs();
+  } else if (state.status == STATUS_HOLD) {
+    stepper.setSpeed(0);
+    stepper.enableOutputs();
+  } else if (state.status == STATUS_OFF) {
+    stepper.setSpeed(0);
+    stepper.disableOutputs();
+  } else if (state.status == STATUS_ROTATE) {
+    stepper.setSpeed(calculateSpeed());
+    stepper.enableOutputs();
+  }
+  //TODO: should throw error
+}
+
+void PumpController::updateStatus(int status) {
+  state.status = status;
+  updateStatus();
+}
+
+float PumpController::calculateSpeed() {
+  float speed = state.rpm/60.0 * settings.steps * settings.gearing * state.ms_mode * state.direction;
+  Serial.println("INFO: calculated speed " + String(speed));
+  return(speed);
+}
+
+/**** CHANGING PUMP STATE ****/
+
+bool PumpController::setMicrosteppingMode(int ms_mode) {
+  // determine microstepping
+  int ms_index = -1;
+  if (ms_mode == MS_MODE_AUTO) {
+    Serial.println("INFO: switching to automatic microstepping");
+    state.ms_index = MS_MODE_AUTO;
+    ms_index = MS_MODE_AUTO;
+  } else {
+    for (int i = 0; i < ms_modes_n; i++) {
+      if (ms_modes[i].mode == ms_mode) {
+        state.ms_index = i;
+        ms_index = i;
+        break;
       }
     }
+    // no valid index found
+    if (ms_index == -1) return(false);
   }
-  return(false);
+
+  // set new microstepping and adjust speed with limit
+  int active_ms_index = activateMicrostepping(ms_index, state.rpm);
+  setSpeedWithSteppingLimit(active_ms_index, state.rpm);
+  updateStatus();
+  return(true);
 }
+
+int PumpController::findAutoMicrostepIndex(float rpm) {
+  // find lowest MS mode that can handle these rpm (otherwise go to full step -> ms_index = 0)
+  int ms_index = 0;
+  for (int i = 1; i < ms_modes_n; i++) {
+    if (rpm <= ms_modes[i].rpm_limit) ms_index = i;
+  }
+  return(ms_index);
+}
+
+int PumpController::activateMicrostepping(int ms_index, float rpm) {
+
+  if (ms_index == MS_MODE_AUTO) {
+    // check for appropriate step mode
+    ms_index = findAutoMicrostepIndex(rpm);
+  }
+
+  // activate microstepping
+  if (ms_index >= 0 && ms_index < ms_modes_n) {
+    Serial.println("INFO: activating microstepping " + String(ms_modes[ms_index].mode));
+    digitalWrite(pins.ms1, ms_modes[ms_index].ms1);
+    digitalWrite(pins.ms2, ms_modes[ms_index].ms2);
+    digitalWrite(pins.ms3, ms_modes[ms_index].ms3);
+    state.ms_mode = ms_modes[ms_index].mode;
+  }
+
+  return(ms_index);
+}
+
+bool PumpController::setSpeedRpm(float rpm) {
+  int active_ms_index = activateMicrostepping(state.ms_index, rpm);
+  bool limited = setSpeedWithSteppingLimit(active_ms_index, rpm);
+  updateStatus();
+  return(limited);
+}
+
+bool PumpController::setSpeedWithSteppingLimit(int ms_index, float rpm) {
+  if (rpm > ms_modes[ms_index].rpm_limit) {
+    Serial.println("WARNING: stepping mode is not fast enough for the requested rpm: " + String(rpm));
+    Serial.println("  --> switching to MS mode rpm limit of " + String(ms_modes[ms_index].rpm_limit));
+    state.rpm = ms_modes[ms_index].rpm_limit;
+    return(false);
+  } else {
+    state.rpm = rpm;
+    return(true);
+  }
+}
+
+void PumpController::setDirection(int direction) {
+  // only update if necesary
+  if ( (direction == DIR_CW || direction == DIR_CC) && state.direction != direction) {
+    state.direction = direction;
+    // if rotating to a specific position, changing direction turns the pump off
+    if (state.status == STATUS_ROTATE) {
+      state.status = STATUS_OFF;
+    }
+    updateStatus();
+  }
+}
+
+void PumpController::start() { updateStatus(STATUS_ON); }
+void PumpController::stop() { updateStatus(STATUS_OFF); }
+void PumpController::hold() { updateStatus(STATUS_HOLD); }
+
+// number of rotations
+long PumpController::rotate(double number) {
+  long steps = state.direction * number * settings.steps * settings.gearing * state.ms_mode;
+  stepper.setCurrentPosition(0);
+  stepper.moveTo(steps);
+  updateStatus(STATUS_ROTATE);
+  return(steps);
+}
+
+/****** WEB COMMAND PROCESSING *******/
 
 // using char array pointers instead of String to make sure we don't get memory leaks here
 void PumpController::extractCommandParam(char* param) {
@@ -115,7 +249,7 @@ int PumpController::parseCommand(String command_string) {
       strcpy(command.value, "-1"); // TODO: get this from dir_CC
       setDirection(DIR_CC);
     } else if (strcmp(direction, CMD_DIR_CHANGE) == 0) {
-      int new_dir = -settings.direction;
+      int new_dir = -state.direction;
       if (new_dir == DIR_CC) {
         strcpy(command.value, "-1"); // TODO: get this from dir_CC
       } else if (new_dir == DIR_CW) {
@@ -132,10 +266,10 @@ int PumpController::parseCommand(String command_string) {
     extractCommandParam(command.value);
     assignCommandMessage();
     if (strcmp(command.value, CMD_STEP_AUTO) == 0) {
-      setMicrostepping(MS_MODE_AUTO);
+      setMicrosteppingMode(MS_MODE_AUTO);
     } else {
-      int ms = atoi(command.value);
-      if (!setMicrostepping(ms)) {
+      int ms_mode = atoi(command.value);
+      if (!setMicrosteppingMode(ms_mode)) {
           // invalid microstepping passed in
           strcpy(command.variable, ERROR_MS);
           strcpy(command.value, ""); // reset
@@ -150,13 +284,13 @@ int PumpController::parseCommand(String command_string) {
     if (strcmp(command.units, SPEED_RPM) == 0) {
       // speed rpm
       float rpm = atof(command.value);
-      if (rpmToSpeed(rpm) <= settings.max_speed) {
-        setSpeedRpm(rpm);
-      } else {
-        strcpy(command.variable, ERROR_SPEED_MAX);
-        sprintf(command.value, "%.2f", speedToRpm(settings.max_speed));
-        ret_val = CMD_RET_ERROR;
+
+      if (!setSpeedRpm(rpm)) {
+        strcpy(command.variable, WARN_SPEED_MAX);
+        sprintf(command.value, "%.2f", state.rpm);
+        ret_val = CMD_RET_WARNING;
       }
+
     } else if (strcmp(command.units, SPEED_FPM) == 0) {
       // speed fpm
       // TODO:
@@ -185,82 +319,4 @@ int PumpController::parseCommand(String command_string) {
   }
 
   return(ret_val);
-}
-
-void PumpController::updateStatus() {
-  if (settings.status == STATUS_ON) {
-    stepper.setSpeed(settings.direction * settings.speed);
-    stepper.enableOutputs();
-  } else if (settings.status == STATUS_HOLD) {
-    stepper.setSpeed(0);
-    stepper.enableOutputs();
-  } else if (settings.status == STATUS_OFF) {
-    stepper.setSpeed(0);
-    stepper.disableOutputs();
-  } else if (settings.status == STATUS_ROTATE) {
-    stepper.setSpeed(settings.direction * settings.speed);
-    stepper.enableOutputs();
-  }
-  //TODO: should throw error
-}
-
-
-void PumpController::setDirection(int direction) {
-  // only update if necesary
-  if ( (direction == DIR_CW || direction == DIR_CC) && settings.direction != direction) {
-    settings.direction = direction;
-    // if rotating to a specific position, changing direction turns the pump off
-    if (settings.status == STATUS_ROTATE) {
-      settings.status = STATUS_OFF;
-    }
-    updateStatus();
-  }
-}
-
-float PumpController::getRotationSteps() { return( 360/settings.step_angle * settings.microstep ); }
-float PumpController::rpmToSpeed(float rpm) { return(rpm/60 * getRotationSteps()); }
-float PumpController::speedToRpm(float speed) { return(speed/getRotationSteps() * 60); }
-float PumpController::getRpm() { return speedToRpm(settings.speed); }
-
-float PumpController::setSpeedRpm(float rpm) {
-  float speed = rpmToSpeed(rpm);
-  if (speed > settings.max_speed) {
-    speed = settings.max_speed;
-  } else if (speed < 0) {
-    speed = 0;
-  }
-  settings.speed = speed;
-  updateStatus();
-  return(speed);
-}
-
-void PumpController::updateStatus(int status) {
-  settings.status = status;
-  updateStatus();
-}
-
-void PumpController::start() { updateStatus(STATUS_ON); }
-void PumpController::stop() { updateStatus(STATUS_OFF); }
-void PumpController::hold() { updateStatus(STATUS_HOLD); }
-
-// number of rotations
-long PumpController::rotate(double number) {
-  long steps = settings.direction * number * getRotationSteps();
-  stepper.setCurrentPosition(0);
-  stepper.moveTo(steps);
-  updateStatus(STATUS_ROTATE);
-  return(steps);
-}
-
-// loop function
-void PumpController::update() {
-  if (settings.status == STATUS_ROTATE) {
-    if (stepper.distanceToGo() == 0) {
-      updateStatus(STATUS_OFF); // disengage if reached target location
-    } else {
-      stepper.runSpeedToPosition();
-    }
-  } else {
-    stepper.runSpeed();
-  }
 }
