@@ -13,7 +13,7 @@
 #define CMD_RUN         "run" // pump run minutes [msg] : runs the pump for x minutes
 #define CMD_AUTO        "auto" // pump auto [msg] : listens to external trigger on the trigger pin
 #define CMD_DISPENSE    "dispense" // pump dispense amount [msg] : dispense a certain amount (requires step-flow calibration)
-#define CMD_ROTATE      "rotate" // # pump rotate number [msg] : run for x number of rotations (requires step-angle)
+#define CMD_ROTATE      "rotate" // # pump rotate number [msg] : run for x number of rotations 
 
 // speed setting
 #define CMD_SPEED       "speed" // pump speed number rpm/fpm [msg] : set the pump speed
