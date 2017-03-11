@@ -152,6 +152,11 @@ void name_handler(const char *topic, const char *data) {
 }
 
 
+// using system threading to improve timely stepper stepping
+SYSTEM_THREAD(ENABLED);
+SYSTEM_MODE(SEMI_AUTOMATIC);
+bool name_handler_registered = false;
+
 void setup() {
 
   // pins
@@ -161,22 +166,18 @@ void setup() {
 
   // serial
   Serial.begin(9600);
-  delay(2000); // FIXME
 
   // time
   Time.zone(-5);
   Serial.print("INFO: starting up at time ");
   Serial.println(Time.format("%Y-%m-%d %H:%M:%S"));
 
-  // device name
-  Particle.subscribe("spark/", name_handler);
-  Particle.publish("spark/device/name");
-
   // inits
   #ifdef ENABLE_DISPLAY
     Serial.println("INFO: initialize LCD");
     lcd.init();
     lcd.print_line(1, "Initializing...");
+    lcd.print_line(4, "ID: waiting...");
   #endif
   #ifdef ENABLE_LOGGING
     Serial.println("INFO: initialize gs logger")
@@ -194,12 +195,24 @@ void setup() {
   Serial.println("INFO: initialize stepper");
   pump.init(reset);
 
+  // user interface update
   Serial.println("INFO: updating user interface");
   update_user_interface(pump.state);
+
+  // connect device to cloud and register for listeners
+  Serial.println("INFO: registering spark variables and connecting to cloud");
+  Particle.subscribe("spark/", name_handler);
+  Particle.connect();
 }
 
 
 void loop() {
+  if (!name_handler_registered && Particle.connected()){
+    // running this here becaus we're in system thread mode and it won't work until connected
+    name_handler_registered = Particle.publish("spark/device/name");
+    Serial.println("INFO: name handler registered");
+  }
+
   #ifdef ENABLE_DISPLAY
     lcd.update();
   #endif
