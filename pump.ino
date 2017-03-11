@@ -57,7 +57,7 @@ MicrostepMode microstep_modes[microstep_modes_n] =
 PumpSettings settings(
   /* steps */      200, // 200 steps/rotation
   /* gearing */     1, // 5.18:1 planetary gear box
-  /* max_speed */  700  // max steps/s - conservative estimate how often particle can call update
+  /* max_speed */  1000  // max steps/s (how often particle can reliably call update)
 );
 
 // initial state of the pump
