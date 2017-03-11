@@ -60,7 +60,10 @@ public:
 #define STATUS_HOLD      3
 #define STATUS_ROTATE    4
 #define STEP_FLOW_UNDEF -1
+#define STATE_VERSION    1 // change whenver PumpState structure changes
+#define STATE_ADDRESS    0 // EEPROM storage location
 struct PumpState {
+  const int version = STATE_VERSION;
   int direction; // DIR_CW or DIR_CC
   int ms_index; // MS_MODE_AUTO or index of the selected microstep mode
   int ms_mode; // stores the actual ms_mode that is active (just for convenience)
@@ -108,6 +111,9 @@ class PumpController {
     int activateMicrostepping(int ms_index, float rpm);
     bool setSpeedWithSteppingLimit(int ms_index, float rpm); // sets state.speed and returns true if request set, false if had to set to limit
 
+    void savePumpState(); // returns TRUE if pump state was updated, FALSE if it didn't need updating
+    bool loadPumpState(); // returns TRUE if pump state loaded successfully, FALSE if it didn't match the required structure and default was loaded instead
+
   public:
 
     // state
@@ -139,6 +145,7 @@ class PumpController {
 
     // methods
     void init(); // to be run during setup()
+    void init(bool reset); // whether to reset pump state back to the default
     void update(); // to be run during loop()
 
     bool setMicrosteppingMode(int ms_mode); // set microstepping by mode, return false if can't find requested mode

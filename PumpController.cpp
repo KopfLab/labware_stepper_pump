@@ -2,7 +2,8 @@
 
 /**** SETUP AND LOOP ****/
 
-void PumpController::init() {
+void PumpController::init() { init(false); }
+void PumpController::init(bool reset) {
   stepper = AccelStepper(AccelStepper::DRIVER, pins.step, pins.dir);
   stepper.setEnablePin(pins.enable);
   stepper.setPinsInverted	(
@@ -24,7 +25,11 @@ void PumpController::init() {
   }
 
   // initialize / restore pump state
-  // TODO: load pump state from EEPROM here
+  if (!reset){
+    loadPumpState();
+  } else {
+    Serial.println("INFO: resetting pump state back to default values");
+  }
   activateMicrostepping(state.ms_index, state.rpm);
   updateStatus();
 }
@@ -32,6 +37,7 @@ void PumpController::init() {
 // loop function
 void PumpController::update() {
   if (state.status == STATUS_ROTATE) {
+    // WARNING: FIXME known bug, when power out, saved rotate status will lead to immediate stop of pump
     if (stepper.distanceToGo() == 0) {
       updateStatus(STATUS_OFF); // disengage if reached target location
     } else {
@@ -42,10 +48,31 @@ void PumpController::update() {
   }
 }
 
+/**** STATE STORAGE AND RELOAD ****/
+void PumpController::savePumpState() {
+  EEPROM.put(STATE_ADDRESS, state);
+  Serial.println("INFO: pump state saved in memory (if any updates were necessary)");
+}
+
+bool PumpController::loadPumpState(){
+  PumpState saved_state;
+  EEPROM.get(STATE_ADDRESS, saved_state);
+  if(saved_state.version == STATE_VERSION) {
+    EEPROM.get(STATE_ADDRESS, state);
+    Serial.println("INFO: successfully restored pump state from memory (version " + String(STATE_VERSION) + ")");
+    return(true);
+  } else {
+    // EEPROM saved state did not have the corret version
+    Serial.println("INFO: could not restore pump state from memory, sticking with initial default");
+    return(false);
+  }
+}
+
 /**** UPDATING PUMP STATUS ****/
 
 void PumpController::updateStatus() {
   Serial.println("INFO: updating status");
+  savePumpState();
   if (state.status == STATUS_ON) {
     stepper.setSpeed(calculateSpeed());
     stepper.enableOutputs();

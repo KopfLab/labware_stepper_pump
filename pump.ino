@@ -1,11 +1,14 @@
 #pragma SPARK_NO_PREPROCESSOR // disable spark preprocssor to avoid issues with callbacks
 #include "application.h"
 
-//#define ENABLE_DISPLAY
+#define ENABLE_DISPLAY
 //#define ENABLE_LOGGING
 
 // LED
 #define LED_pin A2
+
+// reset
+#define RESET_pin A5
 
 // display
 #ifdef ENABLE_DISPLAY
@@ -29,12 +32,12 @@ GsWebhook gs ("post_to_gs");
 
 // pins of the stepper
 StepperPins pins(
-  /* dir */     D3,
-  /* step */    D4,
-  /* enable */  D2,
-  /* ms1 */     D5,
-  /* ms2 */     D6,
-  /* ms3 */     D7
+  /* dir */     D2,
+  /* step */    D3,
+  /* enable */  D7,
+  /* ms1 */     D6,
+  /* ms2 */     D5,
+  /* ms3 */     D4
 );
 
 // microstep modes of the chip (DRV8825)
@@ -53,11 +56,11 @@ MicrostepMode microstep_modes[microstep_modes_n] =
 // settings of the pump and microcontroller
 PumpSettings settings(
   /* steps */      200, // 200 steps/rotation
-  /* gearing */   5.18, // 5.18:1 planetary gear box
-  /* max_speed */  500  // max steps/s - conservative estimate how often particle can call update
+  /* gearing */     1, // 5.18:1 planetary gear box
+  /* max_speed */  700  // max steps/s - conservative estimate how often particle can call update
 );
 
-// initial state of the pump (TODO: reconstruct from EEPROM)
+// initial state of the pump
 PumpState state(
   /* direction */          DIR_CW, // start clockwise
   /* ms_index */     MS_MODE_AUTO, // start in automatice microstepping mode
@@ -79,9 +82,9 @@ void update_user_interface (PumpState state) {
   char rpm_buffer[10];
   sprintf(rpm_buffer, "%2.2f", state.rpm);
   #ifdef ENABLE_DISPLAY
-    lcd.print_line(2, String("Speed [rpm]: ") + String(rpm_buffer));
+    lcd.print_line(2, "Speed: " + String(rpm_buffer) + " rpm");
   #endif
-  Serial.println("@UI - Speed [rpm]: " + String(rpm_buffer));
+  Serial.println("@UI - Speed: " + String(rpm_buffer) + " rpm");
   Serial.print("@UI - MS mode: " + String(state.ms_mode));
   if (state.ms_index == MS_MODE_AUTO) Serial.print(" (AUTO)");
   Serial.println();
@@ -112,8 +115,8 @@ void update_user_interface (PumpState state) {
       break;
   }
   #ifdef ENABLE_DISPLAY
-    lcd.print_line(3, String("Status: ") + String( status ));
-    lcd.print_line(4, String("Direction: ") + String( direction ));
+    lcd.print_line(1, "Status: " + String( status ) + " (MS " + String(state.ms_mode) + ")");
+    lcd.print_line(3, "Direction: " + String( direction ));
   #endif
   Serial.println("@UI - Status: " + String(status));
   Serial.println("@UI - Direction: " + String(direction));
@@ -144,40 +147,52 @@ void name_handler(const char *topic, const char *data) {
   strncpy ( device_name, data, sizeof(device_name) );
   Serial.println("INFO: device ID " + String(device_name));
   #ifdef ENABLE_DISPLAY
-    lcd.print_line(1, "ID: " + String(device_name));
+    lcd.print_line(4, "ID: " + String(device_name));
   #endif
 }
 
 
 void setup() {
 
-  // time
-  Time.zone(-5);
+  // pins
+  pinMode(RESET_pin, INPUT_PULLDOWN);
+  pinMode(LED_pin, OUTPUT);
+  digitalWrite(LED_pin, LOW);
 
   // serial
   Serial.begin(9600);
   delay(2000); // FIXME
 
+  // time
+  Time.zone(-5);
+  Serial.print("INFO: starting up at time ");
+  Serial.println(Time.format("%Y-%m-%d %H:%M:%S"));
+
   // device name
   Particle.subscribe("spark/", name_handler);
   Particle.publish("spark/device/name");
 
-  // LED init
-  pinMode(LED_pin, OUTPUT);
-  digitalWrite(LED_pin, LOW);
-
   // inits
-  Serial.println("INFO: initialize stepper");
-  pump.init();
-
   #ifdef ENABLE_DISPLAY
     Serial.println("INFO: initialize LCD");
     lcd.init();
+    lcd.print_line(1, "Initializing...");
   #endif
   #ifdef ENABLE_LOGGING
     Serial.println("INFO: initialize gs logger")
     gs.init();
   #endif
+
+  // check for reset
+  bool reset = FALSE;
+  if(digitalRead(RESET_pin) == HIGH) {
+    reset = TRUE;
+    Serial.println("INFO: reset request detected");
+  }
+
+  // stepper
+  Serial.println("INFO: initialize stepper");
+  pump.init(reset);
 
   Serial.println("INFO: updating user interface");
   update_user_interface(pump.state);
