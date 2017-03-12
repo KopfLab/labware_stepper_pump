@@ -40,6 +40,9 @@ void PumpController::update() {
     // WARNING: FIXME known bug, when power out, saved rotate status will lead to immediate stop of pump
     if (stepper.distanceToGo() == 0) {
       updateStatus(STATUS_OFF); // disengage if reached target location
+      strcpy(command.type, TYPE_EVENT);
+      strcpy(command.variable, "rot end"); // rotation finished
+      if (command_callback) command_callback(*this);
     } else {
       stepper.runSpeedToPosition();
     }

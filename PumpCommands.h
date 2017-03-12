@@ -54,3 +54,17 @@
 #define ERROR_MS        "unknown microstepping"
 #define ERROR_SPEED     "unknown speed"
 #define WARN_SPEED_MAX  "speed set to maximum of"
+
+// command from spark cloud
+struct PumpCommand {
+  char buffer[63]; //(spark.functions are limited to 63 char long call)
+  char type[20];
+  char variable[25];
+  char value[20];
+  char units[20];
+  char msg[63];
+  PumpCommand() {};
+  PumpCommand(String& command_string) {
+    command_string.toCharArray(buffer, sizeof(buffer));
+  }
+};

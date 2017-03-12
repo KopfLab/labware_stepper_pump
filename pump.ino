@@ -80,55 +80,29 @@ void update_user_interface (PumpState state) {
     digitalWrite(LED_pin, LOW);
   }
   // lcd update
-  char rpm_buffer[10];
-  sprintf(rpm_buffer, "%2.2f", state.rpm);
-  #ifdef ENABLE_DISPLAY
-    lcd.print_line(2, "Speed: " + String(rpm_buffer) + " rpm");
-  #endif
-  Serial.println("@UI - Speed: " + String(rpm_buffer) + " rpm");
-  Serial.print("@UI - MS mode: " + String(state.ms_mode));
-  if (state.ms_index == MS_MODE_AUTO) Serial.print(" (AUTO)");
-  Serial.println();
+  char rpm_buffer[12];
+  get_pump_state_speed_info(state.rpm, rpm_buffer, sizeof(rpm_buffer));
+
+  char ms_mode[5] = "";
+  get_pump_state_ms_info(state.ms_index, state.ms_mode, ms_mode, sizeof(ms_mode), INFO_SHORT);
 
   char status[5] = "";
-  switch (state.status) {
-    case STATUS_ON:
-      strcpy(status, "on");
-      break;
-    case STATUS_OFF:
-      strcpy(status, "off");
-      break;
-    case STATUS_HOLD:
-      strcpy(status, "hold");
-      break;
-    case STATUS_ROTATE:
-      strcpy(status, "rot");
-      break;
-    case STATUS_TRIGGER:
-      strcpy(status, "trig");
-      break;
-  }
+  get_pump_state_status_info(state.status, status, sizeof(status), INFO_SHORT);
 
   char direction[3] = "";
-  switch(state.direction) {
-    case DIR_CW:
-      strcpy(direction, "cw");
-      break;
-    case DIR_CC:
-      strcpy(direction, "cc");
-      break;
-  }
+  get_pump_state_direction_info(state.direction, direction, sizeof(direction), INFO_SHORT);
 
-  char locked[5] = "";
-  if (state.locked) {
-    strcpy(locked, " LOCK");
-  }
+  char locked[6] = "";
+  get_pump_stat_locked_info(state.locked, locked, sizeof(locked), INFO_SHORT);
 
   #ifdef ENABLE_DISPLAY
-    lcd.print_line(1, "Status: " + String( status ) + " (MS " + String(state.ms_mode) + ")");
-    lcd.print_line(3, "Dir: " + String( direction ) + String(locked));
+    lcd.print_line(1, "Status: " + String( status ) + " (MS" + String(ms_mode) + ")");
+    lcd.print_line(2, "Speed: " + String(rpm_buffer));
+    lcd.print_line(3, "Dir: " + String( direction ) + " " + String(locked));
   #endif
   Serial.println("@UI - Status: " + String(status));
+  Serial.println("@UI - Speed: " + String(rpm_buffer) + " rpm");
+  Serial.println("@UI - MS mode: " + String(ms_mode));
   Serial.println("@UI - Direction: " + String(direction));
   Serial.println("@UI - Locked: " + String(locked));
 }
