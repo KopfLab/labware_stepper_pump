@@ -6,8 +6,10 @@
 <title>Pump control</title>
 <meta charset="utf-8">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
 <script src="https://code.jquery.com/jquery-1.10.2.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.0/js/tether.min.js" integrity="sha384-DztdAPBWPRXSA/3eYEEUWrWCy7G5KFbe8fFjk5JAIxUYHKkDx6Qin1DkWx51bBrb" crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js" integrity="sha384-vBWWzlZJ8ea9aCX4pEW3rVHjgjt7zpkNpZk+02D9phzyeVkE+jo0ieGizqPLForn" crossorigin="anonymous"></script>
 
 <script type="text/javascript">
   var cmdFunc = "pump";
@@ -102,6 +104,7 @@
   function stop() { sendCmd("stop") }
   function rotate() { sendCmd("rotate " + document.getElementById("rotations").value) }
   function setSpeed() { sendCmd("speed " + document.getElementById("rpm").value + " rpm") }
+  function setMS(ms) { sendCmd("ms " + String(ms)) }
   function switchDirection() { sendCmd("direction switch") }
 
 </script>
@@ -109,6 +112,7 @@
 </head>
 
 <body>
+<br/>
 <div class="container">
 
   <div class="row">
@@ -165,10 +169,26 @@
       <h3>Speed control</h3>
 
       <p>
-        <input type="text" id="rpm" value="" style="width: 50px;"/>&nbsp;rpm&nbsp;
-        <button type="button"  class="btn btn-primary" id="set" onclick="setSpeed()"
-          title="Set the speed to the specified rotations per minute (rpm).">Set Speed</button>
-      </p>
+        <div class="btn-group">
+          <input type="text" id="rpm" value="" style="width: 50px;"/>&nbsp;rpm&nbsp;
+          <button type="button"  class="btn btn-primary" id="set" onclick="setSpeed()"
+            title="Set the speed to the specified rotations per minute (rpm).">Set Speed</button>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-secondary dropdown-toggle" id="microstepping" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+            Set Microstepping
+          </button>
+          <div class="dropdown-menu" aria-labelledby="microstepping">
+            <a class="dropdown-item" href="javascript:setMS('auto');">Automatic (MS xA)</a>
+            <a class="dropdown-item" href="javascript:setMS('1');">Full step (MS 1)</a>
+            <a class="dropdown-item" href="javascript:setMS('2');">Half step (MS 2)</a>
+            <a class="dropdown-item" href="javascript:setMS('4');">Quarter step (MS 4)</a>
+            <a class="dropdown-item" href="javascript:setMS('8');">1/8 step (MS 8)</a>
+            <a class="dropdown-item" href="javascript:setMS('16');">1/16 step (MS 16)</a>
+            <a class="dropdown-item" href="javascript:setMS('32');">1/32 step (MS 32)</a>
+          </div>
+        </div>
+      </p
 
       <h3>Direction control</h3>
 

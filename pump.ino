@@ -188,6 +188,10 @@ void setup() {
   if(digitalRead(RESET_pin) == HIGH) {
     reset = TRUE;
     Serial.println("INFO: reset request detected");
+    #ifdef ENABLE_DISPLAY
+      lcd.print_line(1, "Resetting...");
+      delay(1000);
+    #endif
   }
 
   // stepper
