@@ -70,7 +70,21 @@ PumpState state(
   /* locked */              false  // start with the pump unlocked
 );
 
-// function to update the user interface based on changes in the pump state
+// state information & function to update the user interface(s) based on changes in the pump state
+char state_information[600] = "";
+
+char rpm_lcd[10];
+char ms_mode_lcd[5];
+char status_lcd[5];
+char dir_lcd[3];
+char locked_lcd[6];
+
+char rpm_web[15];
+char ms_mode_web[10];
+char status_web[50];
+char dir_web[20];
+char locked_web[20];
+
 void update_user_interface (PumpState state) {
   // led update
   if (state.status == STATUS_ON) {
@@ -79,32 +93,32 @@ void update_user_interface (PumpState state) {
     // FIXME: ideally blink if it is holding
     digitalWrite(LED_pin, LOW);
   }
-  // lcd update
-  char rpm_buffer[12];
-  get_pump_state_speed_info(state.rpm, rpm_buffer, sizeof(rpm_buffer));
 
-  char ms_mode[5] = "";
-  get_pump_state_ms_info(state.ms_index, state.ms_mode, ms_mode, sizeof(ms_mode), INFO_SHORT);
+  // user interface update text
+  get_pump_state_status_info(state.status, status_lcd, sizeof(status_lcd), status_web, sizeof(status_web));
+  get_pump_state_speed_info(state.rpm, rpm_lcd, sizeof(rpm_lcd), rpm_web, sizeof(rpm_web));
+  get_pump_state_ms_info(state.ms_index, state.ms_mode, ms_mode_lcd, sizeof(ms_mode_lcd), ms_mode_web, sizeof(ms_mode_web));
+  get_pump_state_direction_info(state.direction, dir_lcd, sizeof(dir_lcd), dir_web, sizeof(dir_web) );
+  get_pump_stat_locked_info(state.locked, locked_lcd, sizeof(locked_lcd), locked_web, sizeof(locked_web));
 
-  char status[5] = "";
-  get_pump_state_status_info(state.status, status, sizeof(status), INFO_SHORT);
+  // serial (for debugging)
+  Serial.println("@UI - Status: " + String(status_lcd));
+  Serial.println("@UI - Speed: " + String(rpm_lcd) + " rpm");
+  Serial.println("@UI - MS mode: " + String(ms_mode_lcd));
+  Serial.println("@UI - Direction: " + String(dir_lcd));
+  Serial.println("@UI - Locked: " + String(locked_lcd));
 
-  char direction[3] = "";
-  get_pump_state_direction_info(state.direction, direction, sizeof(direction), INFO_SHORT);
-
-  char locked[6] = "";
-  get_pump_stat_locked_info(state.locked, locked, sizeof(locked), INFO_SHORT);
-
+  // lcd
   #ifdef ENABLE_DISPLAY
-    lcd.print_line(1, "Status: " + String( status ) + " (MS" + String(ms_mode) + ")");
-    lcd.print_line(2, "Speed: " + String(rpm_buffer));
-    lcd.print_line(3, "Dir: " + String( direction ) + " " + String(locked));
+    lcd.print_line(1, "Status: " + String(status_lcd) + " (MS" + String(ms_mode_lcd) + ")");
+    lcd.print_line(2, "Speed: " + String(rpm_lcd) + " rpm");
+    lcd.print_line(3, "Dir: " + String(dir_lcd) + " " + String(locked_lcd));
   #endif
-  Serial.println("@UI - Status: " + String(status));
-  Serial.println("@UI - Speed: " + String(rpm_buffer) + " rpm");
-  Serial.println("@UI - MS mode: " + String(ms_mode));
-  Serial.println("@UI - Direction: " + String(direction));
-  Serial.println("@UI - Locked: " + String(locked));
+
+  // web
+  snprintf(state_information, sizeof(state_information),
+    "{\"status\":\"%s\", \"rpm\":\"%s\", \"ms\":\"%s\", \"dir\":\"%s\", \"lock\":\"%s\"}",
+    status_web, rpm_web, ms_mode_web, dir_web, locked_web);
 }
 
 // callback function for pump commands
@@ -186,6 +200,7 @@ void setup() {
 
   // connect device to cloud and register for listeners
   Serial.println("INFO: registering spark variables and connecting to cloud");
+  Particle.variable("state", state_information);
   Particle.subscribe("spark/", name_handler);
   Particle.connect();
 }

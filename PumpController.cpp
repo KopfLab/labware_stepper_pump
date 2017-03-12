@@ -258,7 +258,7 @@ int PumpController::parseCommand(String command_string) {
   } else if (state.locked) {
     // pump is locked and command is not lock/unlock
     strcpy(command.variable, ERROR_LOCKED);
-    ret_val = CMD_RET_ERROR;
+    ret_val = CMD_RET_ERR_LOCKED;
   } else {
     // regular commands
     if (strcmp(command.variable, CMD_START) == 0) {
@@ -291,7 +291,7 @@ int PumpController::parseCommand(String command_string) {
       } else {
         strcpy(command.variable, ERROR_SET);
         strcpy(command.value, ""); // reset
-        ret_val = CMD_RET_ERROR;
+        ret_val = CMD_RET_ERR_SET;
       }
     } else if (strcmp(command.variable, CMD_DIR) == 0) {
       // direction
@@ -316,7 +316,7 @@ int PumpController::parseCommand(String command_string) {
       } else {
         strcpy(command.variable, ERROR_DIR);
         strcpy(command.units, ""); // reset
-        ret_val = CMD_RET_ERROR;
+        ret_val = CMD_RET_ERR_DIR;
       }
     } else if (strcmp(command.variable, CMD_STEP) == 0) {
       // microstepping
@@ -330,7 +330,7 @@ int PumpController::parseCommand(String command_string) {
             // invalid microstepping passed in
             strcpy(command.variable, ERROR_MS);
             strcpy(command.value, ""); // reset
-            ret_val = CMD_RET_ERROR;
+            ret_val = CMD_RET_ERR_MS;
         }
       }
     } else if (strcmp(command.variable, CMD_SPEED) == 0) {
@@ -345,7 +345,7 @@ int PumpController::parseCommand(String command_string) {
         if (!setSpeedRpm(rpm)) {
           strcpy(command.variable, WARN_SPEED_MAX);
           sprintf(command.value, "%.2f", state.rpm);
-          ret_val = CMD_RET_WARNING;
+          ret_val = CMD_RET_WARN_MAX_RPM;
         }
 
       } else if (strcmp(command.units, SPEED_FPM) == 0) {
@@ -356,17 +356,17 @@ int PumpController::parseCommand(String command_string) {
         strcpy(command.variable, ERROR_SPEED);
         strcpy(command.value, ""); // reset
         strcpy(command.units, ""); // reset
-        ret_val = CMD_RET_ERROR;
+        ret_val = CMD_RET_ERR;
       }
     } else {
       // no command found
       strcpy(command.variable, ERROR_CMD);
-      ret_val = CMD_RET_ERROR;
+      ret_val = CMD_RET_ERR_CMD;
     }
   }
 
-  // error handling
-  if (ret_val == CMD_RET_ERROR) {
+  // highlight if it's an error
+  if (ret_val < 0) {
     strcpy(command.type, TYPE_ERROR);
     command_string.toCharArray(command.msg, sizeof(command.msg));
   }

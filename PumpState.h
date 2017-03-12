@@ -25,8 +25,6 @@ struct PumpState {
 };
 
 // state info
-#define INFO_SHORT 1
-#define INFO_LONG  2
 struct PumpStateInfo {
    int value;
    char *short_label;
@@ -48,54 +46,47 @@ const PumpStateInfo DIR_INFO[] = {
 
 // NOTE: size is passed as safety precaution to not overallocate the target
 // sizeof(target) would not work because it's a pointer (always size 4)
-static void get_pump_state_status_info(int status, char* target, int size, int type)  {
+static void get_pump_state_status_info(int status, char* target_short, int size_short, char* target_long, int size_long)  {
   for (int i = 0; i < sizeof(STATUS_INFO) / sizeof(PumpStateInfo); i++) {
     if (STATUS_INFO[i].value == status) {
-      if (type == INFO_LONG)
-        strncpy(target, STATUS_INFO[i].long_label, size-1);
-      else if (type == INFO_SHORT)
-        strncpy(target, STATUS_INFO[i].short_label, size-1);
+      strncpy(target_long, STATUS_INFO[i].long_label, size_long-1);
+      strncpy(target_short, STATUS_INFO[i].short_label, size_short-1);
       break;
     }
   }
 }
 
-static void get_pump_state_direction_info(int direction, char* target, int size, int type) {
+static void get_pump_state_direction_info(int direction, char* target_short, int size_short, char* target_long, int size_long) {
   for (int i = 0; i < sizeof(DIR_INFO) / sizeof(PumpStateInfo); i++) {
     if (DIR_INFO[i].value == direction) {
-      if (type == INFO_LONG)
-        strncpy(target, DIR_INFO[i].long_label, size-1);
-      else if (type == INFO_SHORT)
-        strncpy(target, DIR_INFO[i].short_label, size-1);
+      strncpy(target_short, DIR_INFO[i].short_label, size_short-1);
+      strncpy(target_long, DIR_INFO[i].long_label, size_long-1);
       break;
     }
   }
 }
 
-static void get_pump_state_speed_info(float rpm, char* target, int size) {
-  snprintf(target, size, "%2.2f rpm", rpm);
+static void get_pump_state_speed_info(float rpm, char* target_short, int size_short, char* target_long, int size_long) {
+    snprintf(target_short, size_short, "%2.2f", rpm);
+    snprintf(target_long, size_long, "%2.5f", rpm);
 }
 
-static void get_pump_state_ms_info(int ms_index, int ms_mode, char* target, int size, int type) {
-  if (type == INFO_SHORT && ms_index == MS_MODE_AUTO) {
-    snprintf(target, size, "%2dA", ms_mode);
-  } else if (type == INFO_SHORT) {
-    snprintf(target, size, "%2d", ms_mode);
-  } else if (type == INFO_LONG && ms_index == MS_MODE_AUTO) {
-    snprintf(target, size, "%2d (auto)", ms_mode);
-  } else if (type == INFO_LONG) {
-    snprintf(target, size, "%2d", ms_mode);
+static void get_pump_state_ms_info(int ms_index, int ms_mode, char* target_short, int size_short, char* target_long, int size_long) {
+  if (ms_index == MS_MODE_AUTO) {
+    snprintf(target_short, size_short, "%2dA", ms_mode);
+    snprintf(target_long, size_long, "%2d (auto)", ms_mode);
+  } else {
+    snprintf(target_short, size_short, "%2d", ms_mode);
+    snprintf(target_long, size_long, "%2d", ms_mode);
   }
 }
 
-static void get_pump_stat_locked_info(bool locked, char* target, int size, int type) {
-  if (type == INFO_SHORT && locked) {
-    strncpy(target, "LOCK", size - 1);
-  } else if (type == INFO_SHORT) {
-    strcpy(target, "");
-  } else if (type == INFO_LONG && locked) {
-    strncpy(target, "locked", size - 1);
-  } else if (type == INFO_LONG) {
-    strncpy(target, "ready to receive", size - 1);
+static void get_pump_stat_locked_info(bool locked, char* target_short, int size_short, char* target_long, int size_long) {
+  if (locked) {
+    strncpy(target_short, "LOCK", size_short - 1);
+    strncpy(target_long, "locked", size_long - 1);
+  } else {
+    strcpy(target_short, "");
+    strncpy(target_long, "ready to receive", size_long - 1);
   }
 }

@@ -1,7 +1,23 @@
 // return codes
-#define CMD_RET_SUCCESS   0
-#define CMD_RET_WARNING   1
-#define CMD_RET_ERROR    -1
+#define CMD_RET_SUCCESS        0 // succes = 0
+
+#define CMD_RET_ERR           -1 // errors < 0
+#define CMD_RET_ERR_CMD       -2 // error unknown command
+#define ERROR_CMD             "unknown command"
+#define CMD_RET_ERR_LOCKED    -3 // error locked
+#define ERROR_LOCKED          "locked"
+#define CMD_RET_ERR_SET       -4
+#define ERROR_SET             "unknown calibrate"
+#define CMD_RET_ERR_DIR       -5
+#define ERROR_DIR             "unknown direction"
+#define CMD_RET_ERR_MS        -6
+#define ERROR_MS              "unknown microstepping"
+#define CMD_RET_ERR_SPEED     -7
+#define ERROR_SPEED           "unknown speed"
+
+#define CMD_RET_WARN          1 // warnings > 0
+#define CMD_RET_WARN_MAX_RPM  2 // warning max speed exceeded
+#define WARN_SPEED_MAX        "> max rpm"
 
 // commands
 #define CMD_ROOT        "pump" // command root
@@ -45,15 +61,6 @@
 #define TYPE_ERROR      "error"
 #define TYPE_EVENT      "event"
 #define TYPE_SET        CMD_SET
-
-// error messages
-#define ERROR_CMD       "unknown command"
-#define ERROR_LOCKED    "locked"
-#define ERROR_SET       "unknown calibrate"
-#define ERROR_DIR       "unknown direction"
-#define ERROR_MS        "unknown microstepping"
-#define ERROR_SPEED     "unknown speed"
-#define WARN_SPEED_MAX  "speed set to maximum of"
 
 // command from spark cloud
 struct PumpCommand {
