@@ -23,9 +23,19 @@
 
 ## web commands
 
-To run these web commands, you need to either have the [Particle Cloud command line interface (CLI)](https://github.com/spark/particle-cli) installed, or format the appropriate POST request to the [Particle Cloud API](https://docs.particle.io/reference/api/). Here only the currently implemented CLI calls are listed but they translate directly into the corresponding API requests.
+To run these web commands, you need to either have the [Particle Cloud command line interface (CLI)](https://github.com/spark/particle-cli) installed, or format the appropriate POST request to the [Particle Cloud API](https://docs.particle.io/reference/api/). Here only the currently implemented CLI calls are listed but they translate directly into the corresponding API requests (see `pump_control.html` file for an example implementation via javascript).
 
-All calls are issued from the terminal and start with `particle call <deviceID>` where `<deviceID>` is the name of the photon you want to issue a command to. If the command was successfully received and executed `0` is returned, if the command was received but could not be interpreted, `-1` is the return value. Other return values can mean executed with warning or provide additional information. You can change all of the following command's exact wording and all the return codes in `PumpCommands.h` if you want them to be different. Make sure to be logged in (`particle login`) to have access to your photons.
+#### access via POST
+
+Download and open the `pump_control.html` file and fill in your particle account's access token and the device name or ID. You only have access to the photons that are registered to your account.
+
+#### requesting information via CLI
+
+The state of the pump can be requested by calling `particle get <deviceID> state` where `<deviceID>` is the name of the photon you want to get state information from. The return value is an array string (ready to be JSON parsed) that includes information on status, speed, direction, microstepping, locked/unlocked, etc. Make sure to be logged in (`particle login`) to have access to your photons.
+
+#### issuing commands via CLI
+
+All calls are issued from the terminal and start with `particle call <deviceID>` where `<deviceID>` is the name of the photon you want to issue a command to. If the command was successfully received and executed `0` is returned, if the command was received but cause and error, a negative number (e.g. `-1` for generic error, `-2` for unknown command, etc.) is the return value. Positive return values mean executed with warning (e.g. `1` for generic warning, `2` means had to set to max rpm instead of requested). You can change all of the following command's exact wording and all the return codes in `PumpCommands.h` if you want them to be different. Make sure to be logged in (`particle login`) to have access to your photons.
 
   - `particle call pump "start"` to start the pump (at the currently set speed and microstepping)
   - `... pump "stop"` to stop the pump and disengage it (no holding torque applied)
