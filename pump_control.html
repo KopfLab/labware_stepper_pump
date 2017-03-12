@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+<title>Pump control</title>
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+<script src="https://code.jquery.com/jquery-1.10.2.js"></script>
+
+<script type="text/javascript">
+  var cmdFunc = "pump";
+  var infoFunc = "state";
+
+  window.setInterval(function() {
+    var token = document.getElementById("token").value;
+    var device = document.getElementById("device_id").value;
+    if (token == "" || device == "") {
+      document.getElementById("connection").className = "";
+      document.getElementById("connection").innerHTML = "no token or device ID specified";
+      $( ".btn" ).each(function( index, element ) {
+        $( element ).prop('disabled', true);
+      })
+      return;
+    }
+    requestURL = "https://api.spark.io/v1/devices/" + device + "/" + infoFunc + "/?access_token=" + token;
+    $.getJSON(requestURL, function(json) {
+      // connection established
+      document.getElementById("connection").className = "text-success";
+      document.getElementById("connection").innerHTML = "connection established";
+
+      // parse data
+      var data = JSON.parse(json.result);
+
+      // update lock information
+      var locked = data.lock == "locked"
+      if (locked)document.getElementById("state.lock").className = "text-danger";
+      else document.getElementById("state.lock").className = "text-success";
+
+      $( ".btn" ).each(function( index, element ) {
+        if ( ! ($( this ).is("#unlock") || $( this ).is("#lock"))) {
+          $( element ).prop('disabled', locked);
+        } else {
+          $( element ).prop('disabled', false);
+        }
+      })
+
+      // status information
+      document.getElementById("state.lock").innerHTML = data.lock;
+      switch(data.status) {
+          case "running": document.getElementById("state.status").className = "text-success"; break;
+          case "off": document.getElementById("state.status").className = "text-danger"; break;
+          default: document.getElementById("state.status").className = "";
+      }
+      document.getElementById("state.status").innerHTML = data.status;
+
+      // all other information
+      document.getElementById("state.rpm").innerHTML = String(parseFloat(data.rpm));
+      if (document.getElementById("rpm").value == "") document.getElementById("rpm").value = String(parseFloat(data.rpm));
+      document.getElementById("state.ms").innerHTML = data.ms;
+      document.getElementById("state.dir").innerHTML = data.dir;
+    }).error(function() {
+      // TODO: simplify both success and error with an update function
+      document.getElementById("connection").className = "text-danger";
+      document.getElementById("connection").innerHTML = "can't connect (invalid token or device)";
+      document.getElementById("state.lock").innerHTML = "";
+      document.getElementById("state.status").innerHTML = "";
+      document.getElementById("state.rpm").innerHTML = "";
+      document.getElementById("state.ms").innerHTML = "";
+      document.getElementById("state.dir").innerHTML = "";
+
+      $( ".btn" ).each(function( index, element ) {
+        $( element ).prop('disabled', true);
+      })
+    });
+  }, 1000);
+
+  function sendCmd(command) {
+    var token = document.getElementById("token").value;
+    var device = document.getElementById("device_id").value;
+    if (token == "" || device == "") {
+      alert("Must enter valid account token and device ID before issuing commands.");
+      return;
+    }
+    var note = document.getElementById("note").value;
+    if (note.length > 0) command = command + " " + note;
+    document.getElementById("note").value = "";
+    var requestURL = "https://api.spark.io/v1/devices/" + device + "/" + cmdFunc + "/";
+    var posting = $.post( requestURL, { params: command, access_token: token });
+    posting.done(function(data) {
+      var return_value = parseInt(data.return_value);
+      if (return_value < 0) alert("ERROR: Command could not be executed. Error code " + String(return_value));
+      else if (return_value > 0) alert("WARNING: Command caused a warning. Warning code " + String(return_value));
+    });
+  }
+
+  function lock() { sendCmd("lock") }
+  function unlock() { sendCmd("unlock") }
+  function start() { sendCmd("start") }
+  function hold() { sendCmd("hold") }
+  function stop() { sendCmd("stop") }
+  function rotate() { sendCmd("rotate " + document.getElementById("rotations").value) }
+  function setSpeed() { sendCmd("speed " + document.getElementById("rpm").value + " rpm") }
+  function switchDirection() { sendCmd("direction switch") }
+
+</script>
+
+</head>
+
+<body>
+<div class="container">
+
+  <div class="row">
+
+    <div class="col col-md-6">
+
+      <h1>Pump access</h1>
+
+      <h4>Token : <input type="text" id="token" value="" style="width: 200px;"/></h4>
+      <h4>Device: <input type="text" id="device_id" value="" style="width: 200px;"/></h4>
+
+      <h1>Pump status</h1>
+
+      <h4>Connection: <strong><span id="connection"></span></strong></h4>
+      <h4>Access: <strong><span id="state.lock"></span></strong></h4>
+      <h4>Status: <strong><span id="state.status"></span></strong></h4>
+      <h4>Direction: <strong><span id="state.dir"></span></strong></h4>
+      <h4>Speed: <strong><span id="state.rpm"></span> rpm</strong></h4>
+      <h4>Microstepping: <strong><span id="state.ms"></span></strong></h4>
+
+
+    </div>
+
+    <div class="col col-md-6">
+
+      <h1>Pump control</h1>
+
+      <h3>Access</h3>
+
+      <p>
+        <button type="button"  class="btn btn-danger" id="lock" onclick="lock()"
+          title="Lock the pump access so properties can't be changed.">Lock</button>
+        <button type="button" class="btn btn-success" id="unlock" onclick="unlock()"
+          title="Unlock the pump access so properties can be changed again.">Unlock</button>
+      </p>
+
+      <h3>Operation</h3>
+
+      <p>
+        <button type="button"  class="btn btn-success" id="on" onclick="start()"
+          title="Start the pump and keep it running at the set speed.">Start</button>
+        <button type="button" class="btn btn-warning" id="hold" onclick="hold()"
+          title="Stop the pump but keep it holding position.">Hold</button>
+        <button type="button" class="btn btn-danger" id="off" onclick="stop()"
+          title="Stop the pump and disengage.">Stop</button>
+      </p>
+
+      <p>
+        <input type="text" id="rotations" value="1" style="width: 50px;"/>&nbsp;rotations&nbsp;
+        <button type="button"  class="btn btn-info" id="rotate" onclick="rotate()"
+          title="Run pump for a specific number of rotations at the set speed (pump will stop and hold when done).">Run</button>
+      </p>
+
+      <h3>Speed control</h3>
+
+      <p>
+        <input type="text" id="rpm" value="" style="width: 50px;"/>&nbsp;rpm&nbsp;
+        <button type="button"  class="btn btn-primary" id="set" onclick="setSpeed()"
+          title="Set the speed to the specified rotations per minute (rpm).">Set Speed</button>
+      </p>
+
+      <h3>Direction control</h3>
+
+      <p>
+        <button type="button" class="btn btn-primary" id="switch" onclick="switchDirection()">Switch direction</button>
+      </p>
+
+      <h3>Notes</h3>
+      <p>
+        The following note will be attached to the next control commmand.<br/>
+        Notes are optional but can be helpful for keeping a log of events.<br/>
+        <br/><input type="text" id="note" value="" style="width: 300px;"/>
+      </p>
+
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
