@@ -6,6 +6,10 @@
 // commands
 #define CMD_ROOT        "pump" // command root
 
+// control
+#define CMD_LOCK        "lock" // pump lock : locks the pump settings until unlock is called
+#define CMD_UNLOCK      "unlock" // pump unlock: unlocks the pump settings
+
 // running
 #define CMD_START       "start" // pump start [msg] : starts the pump
 #define CMD_STOP        "stop" // pump stop [msg] : stops the pump (stops power)
@@ -13,7 +17,7 @@
 #define CMD_RUN         "run" // pump run minutes [msg] : runs the pump for x minutes
 #define CMD_AUTO        "auto" // pump auto [msg] : listens to external trigger on the trigger pin
 #define CMD_DISPENSE    "dispense" // pump dispense amount [msg] : dispense a certain amount (requires step-flow calibration)
-#define CMD_ROTATE      "rotate" // # pump rotate number [msg] : run for x number of rotations 
+#define CMD_ROTATE      "rotate" // # pump rotate number [msg] : run for x number of rotations
 
 // speed setting
 #define CMD_SPEED       "speed" // pump speed number rpm/fpm [msg] : set the pump speed
@@ -44,6 +48,7 @@
 
 // error messages
 #define ERROR_CMD       "unknown command"
+#define ERROR_LOCKED    "locked"
 #define ERROR_SET       "unknown calibrate"
 #define ERROR_DIR       "unknown direction"
 #define ERROR_MS        "unknown microstepping"

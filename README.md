@@ -37,4 +37,6 @@ All calls are issued from the terminal and start with `particle call <deviceID>`
   - `... pump "direction cc"` to set the direction to counter clockwise
   - `... pump "direction cw"` to set the direction to clockwise
   - `... pump "direction switch"` to reverse the direction (note that any direction changes stops the pump if it is in `rotate <x>` mode)
+  - `... pump "lock"` to lock the pump (i.e. no commands will be accepted until `unlock` is called)
+  - `... pump "unlock"` to unlock the pump if it is locked
   - to be continued (more commands in progress)...

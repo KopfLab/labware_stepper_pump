@@ -66,7 +66,8 @@ PumpState state(
   /* ms_index */     MS_MODE_AUTO, // start in automatice microstepping mode
   /* status */         STATUS_OFF, // start off
   /* rpm */                     1, // start speed [rpm]
-  /* step_flow */  STEP_FLOW_UNDEF // start undefined how much mass / step
+  /* step_flow */ STEP_FLOW_UNDEF, // start undefined how much mass / step
+  /* locked */              false  // start with the pump unlocked
 );
 
 // function to update the user interface based on changes in the pump state
@@ -103,6 +104,9 @@ void update_user_interface (PumpState state) {
     case STATUS_ROTATE:
       strcpy(status, "rot");
       break;
+    case STATUS_TRIGGER:
+      strcpy(status, "trig");
+      break;
   }
 
   char direction[3] = "";
@@ -114,12 +118,19 @@ void update_user_interface (PumpState state) {
       strcpy(direction, "cc");
       break;
   }
+
+  char locked[5] = "";
+  if (state.locked) {
+    strcpy(locked, " LOCK");
+  }
+
   #ifdef ENABLE_DISPLAY
     lcd.print_line(1, "Status: " + String( status ) + " (MS " + String(state.ms_mode) + ")");
-    lcd.print_line(3, "Direction: " + String( direction ));
+    lcd.print_line(3, "Dir: " + String( direction ) + String(locked));
   #endif
   Serial.println("@UI - Status: " + String(status));
   Serial.println("@UI - Direction: " + String(direction));
+  Serial.println("@UI - Locked: " + String(locked));
 }
 
 // callback function for pump commands

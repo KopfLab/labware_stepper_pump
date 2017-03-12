@@ -48,6 +48,20 @@ void PumpController::update() {
   }
 }
 
+/**** LOCK AND UNLOCK ****/
+
+void PumpController::lock() {
+  state.locked = true;
+  Serial.println("INFO: locking pump");
+  savePumpState();
+}
+
+void PumpController::unlock() {
+  state.locked = false;
+  Serial.println("INFO: unlocking pump");
+  savePumpState();
+}
+
 /**** STATE STORAGE AND RELOAD ****/
 void PumpController::savePumpState() {
   EEPROM.put(STATE_ADDRESS, state);
@@ -231,107 +245,121 @@ int PumpController::parseCommand(String command_string) {
 
   int ret_val = CMD_RET_SUCCESS;
 
-  if (strcmp(command.variable, CMD_START) == 0) {
-    // start
+  // locking
+  if (strcmp(command.variable, CMD_UNLOCK) == 0) {
     assignCommandMessage();
-    start();
-  } else if (strcmp(command.variable, CMD_STOP) == 0) {
-    // stop
+    unlock();
+  } else if (strcmp(command.variable, CMD_LOCK) == 0) {
     assignCommandMessage();
-    stop();
-  } else if (strcmp(command.variable, CMD_HOLD) == 0) {
-    // hold
-    assignCommandMessage();
-    hold();
-  } else if (strcmp(command.variable, CMD_ROTATE) == 0) {
-    // rotate
-    extractCommandParam(command.value);
-    assignCommandMessage();
-    rotate(atof(command.value));
-  } else if (strcmp(command.variable, CMD_SET) == 0) {
-    // calibrate
-    strcpy(command.type, TYPE_SET);
-    extractCommandParam(command.variable);
-    extractCommandParam(command.value);
-    assignCommandMessage();
-    // TODO: implement these commands properly
-    if (strcmp(command.variable, SET_STEP_FLOW) == 0) {
-      // step flow
-      strcpy(command.units, "volume/step");
-    } else {
-      strcpy(command.variable, ERROR_SET);
-      strcpy(command.value, ""); // reset
-      ret_val = CMD_RET_ERROR;
-    }
-  } else if (strcmp(command.variable, CMD_DIR) == 0) {
-    // direction
-    char direction[10];
-    extractCommandParam(direction);
-    strcpy(command.units, "cw/cc");
-    assignCommandMessage();
-    if (strcmp(direction, CMD_DIR_CW) == 0) {
-      strcpy(command.value, "1"); // TODO: get this from dir_CW
-      setDirection(DIR_CW);
-    } else if (strcmp(direction, CMD_DIR_CC) == 0) {
-      strcpy(command.value, "-1"); // TODO: get this from dir_CC
-      setDirection(DIR_CC);
-    } else if (strcmp(direction, CMD_DIR_CHANGE) == 0) {
-      int new_dir = -state.direction;
-      if (new_dir == DIR_CC) {
-        strcpy(command.value, "-1"); // TODO: get this from dir_CC
-      } else if (new_dir == DIR_CW) {
-        strcpy(command.value, "1"); // TODO: get this from dir_CC
-      }
-      setDirection(new_dir);
-    } else {
-      strcpy(command.variable, ERROR_DIR);
-      strcpy(command.units, ""); // reset
-      ret_val = CMD_RET_ERROR;
-    }
-  } else if (strcmp(command.variable, CMD_STEP) == 0) {
-    // microstepping
-    extractCommandParam(command.value);
-    assignCommandMessage();
-    if (strcmp(command.value, CMD_STEP_AUTO) == 0) {
-      setMicrosteppingMode(MS_MODE_AUTO);
-    } else {
-      int ms_mode = atoi(command.value);
-      if (!setMicrosteppingMode(ms_mode)) {
-          // invalid microstepping passed in
-          strcpy(command.variable, ERROR_MS);
-          strcpy(command.value, ""); // reset
-          ret_val = CMD_RET_ERROR;
-      }
-    }
-  } else if (strcmp(command.variable, CMD_SPEED) == 0) {
-    // speed
-    extractCommandParam(command.value);
-    extractCommandParam(command.units);
-    assignCommandMessage();
-    if (strcmp(command.units, SPEED_RPM) == 0) {
-      // speed rpm
-      float rpm = atof(command.value);
-
-      if (!setSpeedRpm(rpm)) {
-        strcpy(command.variable, WARN_SPEED_MAX);
-        sprintf(command.value, "%.2f", state.rpm);
-        ret_val = CMD_RET_WARNING;
-      }
-
-    } else if (strcmp(command.units, SPEED_FPM) == 0) {
-      // speed fpm
-      // TODO:
-    } else {
-      // invalid speed
-      strcpy(command.variable, ERROR_SPEED);
-      strcpy(command.value, ""); // reset
-      strcpy(command.units, ""); // reset
-      ret_val = CMD_RET_ERROR;
-    }
-  } else {
-    // no command found
-    strcpy(command.variable, ERROR_CMD);
+    lock();
+  } else if (state.locked) {
+    // pump is locked and command is not lock/unlock
+    strcpy(command.variable, ERROR_LOCKED);
     ret_val = CMD_RET_ERROR;
+  } else {
+    // regular commands
+    if (strcmp(command.variable, CMD_START) == 0) {
+      // start
+      assignCommandMessage();
+      start();
+    } else if (strcmp(command.variable, CMD_STOP) == 0) {
+      // stop
+      assignCommandMessage();
+      stop();
+    } else if (strcmp(command.variable, CMD_HOLD) == 0) {
+      // hold
+      assignCommandMessage();
+      hold();
+    } else if (strcmp(command.variable, CMD_ROTATE) == 0) {
+      // rotate
+      extractCommandParam(command.value);
+      assignCommandMessage();
+      rotate(atof(command.value));
+    } else if (strcmp(command.variable, CMD_SET) == 0) {
+      // calibrate
+      strcpy(command.type, TYPE_SET);
+      extractCommandParam(command.variable);
+      extractCommandParam(command.value);
+      assignCommandMessage();
+      // TODO: implement these commands properly
+      if (strcmp(command.variable, SET_STEP_FLOW) == 0) {
+        // step flow
+        strcpy(command.units, "volume/step");
+      } else {
+        strcpy(command.variable, ERROR_SET);
+        strcpy(command.value, ""); // reset
+        ret_val = CMD_RET_ERROR;
+      }
+    } else if (strcmp(command.variable, CMD_DIR) == 0) {
+      // direction
+      char direction[10];
+      extractCommandParam(direction);
+      strcpy(command.units, "cw/cc");
+      assignCommandMessage();
+      if (strcmp(direction, CMD_DIR_CW) == 0) {
+        strcpy(command.value, "1"); // TODO: get this from dir_CW
+        setDirection(DIR_CW);
+      } else if (strcmp(direction, CMD_DIR_CC) == 0) {
+        strcpy(command.value, "-1"); // TODO: get this from dir_CC
+        setDirection(DIR_CC);
+      } else if (strcmp(direction, CMD_DIR_CHANGE) == 0) {
+        int new_dir = -state.direction;
+        if (new_dir == DIR_CC) {
+          strcpy(command.value, "-1"); // TODO: get this from dir_CC
+        } else if (new_dir == DIR_CW) {
+          strcpy(command.value, "1"); // TODO: get this from dir_CC
+        }
+        setDirection(new_dir);
+      } else {
+        strcpy(command.variable, ERROR_DIR);
+        strcpy(command.units, ""); // reset
+        ret_val = CMD_RET_ERROR;
+      }
+    } else if (strcmp(command.variable, CMD_STEP) == 0) {
+      // microstepping
+      extractCommandParam(command.value);
+      assignCommandMessage();
+      if (strcmp(command.value, CMD_STEP_AUTO) == 0) {
+        setMicrosteppingMode(MS_MODE_AUTO);
+      } else {
+        int ms_mode = atoi(command.value);
+        if (!setMicrosteppingMode(ms_mode)) {
+            // invalid microstepping passed in
+            strcpy(command.variable, ERROR_MS);
+            strcpy(command.value, ""); // reset
+            ret_val = CMD_RET_ERROR;
+        }
+      }
+    } else if (strcmp(command.variable, CMD_SPEED) == 0) {
+      // speed
+      extractCommandParam(command.value);
+      extractCommandParam(command.units);
+      assignCommandMessage();
+      if (strcmp(command.units, SPEED_RPM) == 0) {
+        // speed rpm
+        float rpm = atof(command.value);
+
+        if (!setSpeedRpm(rpm)) {
+          strcpy(command.variable, WARN_SPEED_MAX);
+          sprintf(command.value, "%.2f", state.rpm);
+          ret_val = CMD_RET_WARNING;
+        }
+
+      } else if (strcmp(command.units, SPEED_FPM) == 0) {
+        // speed fpm
+        // TODO:
+      } else {
+        // invalid speed
+        strcpy(command.variable, ERROR_SPEED);
+        strcpy(command.value, ""); // reset
+        strcpy(command.units, ""); // reset
+        ret_val = CMD_RET_ERROR;
+      }
+    } else {
+      // no command found
+      strcpy(command.variable, ERROR_CMD);
+      ret_val = CMD_RET_ERROR;
+    }
   }
 
   // error handling

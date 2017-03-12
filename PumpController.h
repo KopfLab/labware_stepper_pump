@@ -52,15 +52,15 @@ public:
 };
 
 // pump state
-// TODO: these should be possible to store permanently in EEPROM and restore pump state from there
 #define DIR_CW           1
 #define DIR_CC          -1
 #define STATUS_ON        1
 #define STATUS_OFF       2
 #define STATUS_HOLD      3
 #define STATUS_ROTATE    4
+#define STATUS_TRIGGER   5 // TODO: implement signal triggering mode
 #define STEP_FLOW_UNDEF -1
-#define STATE_VERSION    1 // change whenver PumpState structure changes
+#define STATE_VERSION    2 // change whenver PumpState structure changes
 #define STATE_ADDRESS    0 // EEPROM storage location
 struct PumpState {
   const int version = STATE_VERSION;
@@ -70,10 +70,11 @@ struct PumpState {
   int status; // STATUS_ON, OFF, HOLD
   float rpm; // speed in rotations / minute (actual speed in steps/s depends on microstepping mode)
   double step_flow; // mass/step calibration
+  bool locked; // whether settings are locked
 
   PumpState() {};
-  PumpState(int direction, int ms_index, int status, float rpm, double step_flow) :
-    direction(direction), ms_index(ms_index), status(status), rpm(rpm), step_flow(step_flow) {};
+  PumpState(int direction, int ms_index, int status, float rpm, double step_flow, bool locked) :
+    direction(direction), ms_index(ms_index), status(status), rpm(rpm), step_flow(step_flow), locked(locked) {};
 };
 
 // command from spark cloud
@@ -151,6 +152,9 @@ class PumpController {
     bool setMicrosteppingMode(int ms_mode); // set microstepping by mode, return false if can't find requested mode
     bool setSpeedRpm(float rpm); // return false if had to limit speed, true if taking speed directly
     void setDirection(int direction); // set direction
+
+    void lock(); // lock pump
+    void unlock(); // unlock pump
 
     void start(); // start the pump
     void stop(); // stop the pump
