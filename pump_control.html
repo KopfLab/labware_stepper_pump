@@ -26,7 +26,7 @@
       })
       return;
     }
-    requestURL = "https://api.spark.io/v1/devices/" + device + "/" + infoFunc + "/?access_token=" + token;
+    requestURL = "https://api.particle.io/v1/devices/" + device + "/" + infoFunc + "/?access_token=" + token;
     $.getJSON(requestURL, function(json) {
       // connection established
       document.getElementById("connection").className = "text-success";
@@ -88,7 +88,7 @@
     var note = document.getElementById("note").value;
     if (note.length > 0) command = command + " " + note;
     document.getElementById("note").value = "";
-    var requestURL = "https://api.spark.io/v1/devices/" + device + "/" + cmdFunc + "/";
+    var requestURL = "https://api.particle.io/v1/devices/" + device + "/" + cmdFunc + "/";
     var posting = $.post( requestURL, { params: command, access_token: token });
     posting.done(function(data) {
       var return_value = parseInt(data.return_value);
