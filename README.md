@@ -2,7 +2,7 @@
 
 ## wiring diagram
 
- - TODO
+ ![Pump PCB](pump_pcb.jpg)
 
 ## particle photon setup
 
