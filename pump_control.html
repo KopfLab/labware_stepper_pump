@@ -36,15 +36,22 @@
       var data = JSON.parse(json.result);
 
       // update lock information
-      var locked = data.lock == "locked"
+      var locked = data.lock == "locked";
       if (locked)document.getElementById("state.lock").className = "text-danger";
       else document.getElementById("state.lock").className = "text-success";
 
+      // manual information
+      var manual = data.status == "manual mode";
+
       $( ".btn" ).each(function( index, element ) {
-        if ( ! ($( this ).is("#unlock") || $( this ).is("#lock"))) {
-          $( element ).prop('disabled', locked);
+        if ( $( this ).is("#unlock") || $( this ).is("#lock") ) {
+          $( element ).prop('disabled', false); // never locked
+        } else if (locked) {
+          $( element ).prop('disabled', true);
+        } else if (manual && !($( this ).is("#on") || $( this ).is("#off"))) {
+          $( element ).prop('disabled', true); // in manual everything but start and stop
         } else {
-          $( element ).prop('disabled', false);
+          $( element ).prop('disabled', false); // nothing locked
         }
       })
 
@@ -102,6 +109,7 @@
   function start() { sendCmd("start") }
   function hold() { sendCmd("hold") }
   function stop() { sendCmd("stop") }
+  function manual() { sendCmd("manual") }
   function rotate() { sendCmd("rotate " + document.getElementById("rotations").value) }
   function setSpeed() { sendCmd("speed " + document.getElementById("rpm").value + " rpm") }
   function setMS(ms) { sendCmd("ms " + String(ms)) }
@@ -158,6 +166,8 @@
           title="Stop the pump but keep it holding position.">Hold</button>
         <button type="button" class="btn btn-danger" id="off" onclick="stop()"
           title="Stop the pump and disengage.">Stop</button>
+        <button type="button" class="btn btn-info" id="manual" onclick="manual()"
+          title="Switch the pump to manual mode.">Manual</button>
       </p>
 
       <p>
