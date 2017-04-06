@@ -30,7 +30,6 @@ void PumpController::init(bool reset) {
   } else {
     Serial.println("INFO: resetting pump state back to default values");
   }
-  activateMicrostepping(state.ms_index, state.rpm);
   updateStatus();
 }
 
@@ -89,9 +88,22 @@ bool PumpController::loadPumpState(){
 
 void PumpController::updateStatus() {
   Serial.println("INFO: updating status");
+
+  // save pump state to EEPROM
   savePumpState();
+
+  // update microstepping
+  if (state.ms_index >= 0 && state.ms_index < ms_modes_n) {
+    digitalWrite(pins.ms1, ms_modes[state.ms_index].ms1);
+    digitalWrite(pins.ms2, ms_modes[state.ms_index].ms2);
+    digitalWrite(pins.ms3, ms_modes[state.ms_index].ms3);
+  }
+
+  // update speed
+  stepper.setSpeed(calculateSpeed());
+
+  // update status
   if (state.status == STATUS_ON) {
-    stepper.setSpeed(calculateSpeed());
     stepper.enableOutputs();
   } else if (state.status == STATUS_HOLD) {
     stepper.setSpeed(0);
@@ -100,7 +112,6 @@ void PumpController::updateStatus() {
     stepper.setSpeed(0);
     stepper.disableOutputs();
   } else if (state.status == STATUS_ROTATE) {
-    stepper.setSpeed(calculateSpeed());
     stepper.enableOutputs();
   }
   //TODO: should throw error
@@ -119,77 +130,74 @@ float PumpController::calculateSpeed() {
 
 /**** CHANGING PUMP STATE ****/
 
+void PumpController::setAutoMicrosteppingMode() {
+  Serial.println("INFO: activating automatic microstepping");
+  state.ms_auto = true;
+  state.ms_index = findMicrostepIndexForRpm(state.rpm);
+  state.ms_mode = ms_modes[state.ms_index].mode; // tracked for convenience
+  updateStatus();
+}
+
 bool PumpController::setMicrosteppingMode(int ms_mode) {
-  // determine microstepping
+
+  // find index for requested microstepping mode
   int ms_index = -1;
-  if (ms_mode == MS_MODE_AUTO) {
-    Serial.println("INFO: switching to automatic microstepping");
-    state.ms_index = MS_MODE_AUTO;
-    ms_index = MS_MODE_AUTO;
-  } else {
-    for (int i = 0; i < ms_modes_n; i++) {
-      if (ms_modes[i].mode == ms_mode) {
-        state.ms_index = i;
-        ms_index = i;
-        break;
-      }
+  for (int i = 0; i < ms_modes_n; i++) {
+    if (ms_modes[i].mode == ms_mode) {
+      ms_index = i;
+      break;
     }
-    // no valid index found
-    if (ms_index == -1) return(false);
   }
 
-  // set new microstepping and adjust speed with limit
-  int active_ms_index = activateMicrostepping(ms_index, state.rpm);
-  setSpeedWithSteppingLimit(active_ms_index, state.rpm);
+  // no index found for requested mode
+  if (ms_index == -1) return(false);
+
+  Serial.println("INFO: activating microstepping index " +  String(ms_index) + " for mode " + String(ms_modes[ms_index].mode));
+  // update with new microstepping mode
+  state.ms_auto = false; // deactivate auto microstepping
+  state.ms_index = ms_index; // set the found index
+  state.ms_mode = ms_modes[state.ms_index].mode; // tracked for convenience
+  setSpeedWithSteppingLimit(state.rpm); // update speed (if necessary)
   updateStatus();
   return(true);
 }
 
-int PumpController::findAutoMicrostepIndex(float rpm) {
-  // find lowest MS mode that can handle these rpm (otherwise go to full step -> ms_index = 0)
-  int ms_index = 0;
-  for (int i = 1; i < ms_modes_n; i++) {
-    if (rpm <= ms_modes[i].rpm_limit) ms_index = i;
+int PumpController::findMicrostepIndexForRpm(float rpm) {
+  if (state.ms_auto) {
+    // automatic mode --> find lowest MS mode that can handle these rpm (otherwise go to full step -> ms_index = 0)
+    int ms_index = 0;
+    for (int i = 1; i < ms_modes_n; i++) {
+      if (rpm <= ms_modes[i].rpm_limit) ms_index = i;
+    }
+    return(ms_index);
+  } else {
+    return(state.ms_index);
   }
-  return(ms_index);
-}
-
-int PumpController::activateMicrostepping(int ms_index, float rpm) {
-
-  if (ms_index == MS_MODE_AUTO) {
-    // check for appropriate step mode
-    ms_index = findAutoMicrostepIndex(rpm);
-  }
-
-  // activate microstepping
-  if (ms_index >= 0 && ms_index < ms_modes_n) {
-    Serial.println("INFO: activating microstepping " + String(ms_modes[ms_index].mode));
-    digitalWrite(pins.ms1, ms_modes[ms_index].ms1);
-    digitalWrite(pins.ms2, ms_modes[ms_index].ms2);
-    digitalWrite(pins.ms3, ms_modes[ms_index].ms3);
-    state.ms_mode = ms_modes[ms_index].mode;
-  }
-
-  return(ms_index);
 }
 
 bool PumpController::setSpeedRpm(float rpm) {
-  int active_ms_index = activateMicrostepping(state.ms_index, rpm);
-  bool limited = setSpeedWithSteppingLimit(active_ms_index, rpm);
+  state.ms_index = findMicrostepIndexForRpm(rpm);
+  state.ms_mode = ms_modes[state.ms_index].mode; // tracked for convenience
+  bool limited = setSpeedWithSteppingLimit(rpm);
   updateStatus();
   return(limited);
 }
 
-bool PumpController::setSpeedWithSteppingLimit(int ms_index, float rpm) {
-  if (rpm > ms_modes[ms_index].rpm_limit) {
+bool PumpController::setSpeedWithSteppingLimit(float rpm) {
+  if (rpm > ms_modes[state.ms_index].rpm_limit) {
     Serial.println("WARNING: stepping mode is not fast enough for the requested rpm: " + String(rpm));
-    Serial.println("  --> switching to MS mode rpm limit of " + String(ms_modes[ms_index].rpm_limit));
-    state.rpm = ms_modes[ms_index].rpm_limit;
+    Serial.println("  --> switching to MS mode rpm limit of " + String(ms_modes[state.ms_index].rpm_limit));
+    state.rpm = ms_modes[state.ms_index].rpm_limit;
     return(false);
   } else {
     state.rpm = rpm;
     return(true);
   }
+}
+
+float PumpController::getMaxRpm() {
+  // assume full step mode is index 0 and has the highest rpm_limit
+  return(ms_modes[0].rpm_limit);
 }
 
 void PumpController::setDirection(int direction) {
@@ -207,6 +215,7 @@ void PumpController::setDirection(int direction) {
 void PumpController::start() { updateStatus(STATUS_ON); }
 void PumpController::stop() { updateStatus(STATUS_OFF); }
 void PumpController::hold() { updateStatus(STATUS_HOLD); }
+void PumpController::manual() { updateStatus(STATUS_MANUAL); }
 
 // number of rotations
 long PumpController::rotate(double number) {
@@ -273,6 +282,10 @@ int PumpController::parseCommand(String command_string) {
       // hold
       assignCommandMessage();
       hold();
+    } else if (strcmp(command.variable, CMD_MANUAL) == 0) {
+      // hold
+      assignCommandMessage();
+      manual();
     } else if (strcmp(command.variable, CMD_ROTATE) == 0) {
       // rotate
       extractCommandParam(command.value);
@@ -323,7 +336,7 @@ int PumpController::parseCommand(String command_string) {
       extractCommandParam(command.value);
       assignCommandMessage();
       if (strcmp(command.value, CMD_STEP_AUTO) == 0) {
-        setMicrosteppingMode(MS_MODE_AUTO);
+        setAutoMicrosteppingMode();
       } else {
         int ms_mode = atoi(command.value);
         if (!setMicrosteppingMode(ms_mode)) {

@@ -7,6 +7,8 @@
 // LED
 #define LED_pin A2
 
+#define POT_pin A4
+
 // reset
 #define RESET_pin A5
 
@@ -63,11 +65,11 @@ PumpSettings settings(
 // initial state of the pump
 PumpState state(
   /* direction */          DIR_CW, // start clockwise
-  /* ms_index */     MS_MODE_AUTO, // start in automatice microstepping mode
   /* status */         STATUS_OFF, // start off
   /* rpm */                     1, // start speed [rpm]
   /* step_flow */ STEP_FLOW_UNDEF, // start undefined how much mass / step
   /* locked */              false  // start with the pump unlocked
+  // no specification of microstepping mode = automatic mode
 );
 
 // state information & function to update the user interface(s) based on changes in the pump state
@@ -97,7 +99,7 @@ void update_user_interface (PumpState state) {
   // user interface update text
   get_pump_state_status_info(state.status, status_lcd, sizeof(status_lcd), status_web, sizeof(status_web));
   get_pump_state_speed_info(state.rpm, rpm_lcd, sizeof(rpm_lcd), rpm_web, sizeof(rpm_web));
-  get_pump_state_ms_info(state.ms_index, state.ms_mode, ms_mode_lcd, sizeof(ms_mode_lcd), ms_mode_web, sizeof(ms_mode_web));
+  get_pump_state_ms_info(state.ms_auto, state.ms_mode, ms_mode_lcd, sizeof(ms_mode_lcd), ms_mode_web, sizeof(ms_mode_web));
   get_pump_state_direction_info(state.direction, dir_lcd, sizeof(dir_lcd), dir_web, sizeof(dir_web) );
   get_pump_stat_locked_info(state.locked, locked_lcd, sizeof(locked_lcd), locked_web, sizeof(locked_web));
 
@@ -160,6 +162,7 @@ void setup() {
 
   // pins
   pinMode(RESET_pin, INPUT_PULLDOWN);
+  pinMode(POT_pin, INPUT);
   pinMode(LED_pin, OUTPUT);
   digitalWrite(LED_pin, LOW);
 
@@ -167,7 +170,7 @@ void setup() {
   Serial.begin(9600);
 
   // time
-  Time.zone(-5);
+  Time.zone(-6); // Mountain Daylight Time -6 / Mountain Standard Time -7
   Serial.print("INFO: starting up at time ");
   Serial.println(Time.format("%Y-%m-%d %H:%M:%S"));
 
@@ -210,12 +213,25 @@ void setup() {
 }
 
 
+// manual speed control
+
+#define MANUAL_read_interval 500 // [ms]
+long last_manual_read = 0;
+float last_manual_rpm = -1;
+float current_manual_rpm = 0;
+
+#define MANUAL_POT_DEBOUNCE 50    // the debounce time in ms
+
+
+
 void loop() {
   if (!name_handler_registered && Particle.connected()){
     // running this here becaus we're in system thread mode and it won't work until connected
     name_handler_registered = Particle.publish("spark/device/name");
     Serial.println("INFO: name handler registered");
   }
+
+
 
   #ifdef ENABLE_DISPLAY
     lcd.update();

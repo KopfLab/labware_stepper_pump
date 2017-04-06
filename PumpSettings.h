@@ -14,7 +14,6 @@ struct StepperPins {
 };
 
 // microstep mode structur (driver chip specific)
-#define MS_MODE_AUTO  -1 // code for automatic determination of microstep modes
 struct MicrostepMode {
   int mode; // the mode for the ms mode
   bool ms1; // HIGH or LOW for ms1

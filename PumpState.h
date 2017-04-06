@@ -4,15 +4,17 @@
 #define STATUS_ON        1
 #define STATUS_OFF       2
 #define STATUS_HOLD      3
-#define STATUS_ROTATE    4
-#define STATUS_TRIGGER   5 // TODO: implement signal triggering mode
+#define STATUS_MANUAL    4
+#define STATUS_ROTATE    5
+#define STATUS_TRIGGER   6 // TODO: implement signal triggering mode
 #define STEP_FLOW_UNDEF -1
-#define STATE_VERSION    2 // change whenver PumpState structure changes
+#define STATE_VERSION    3 // change whenver PumpState structure changes
 #define STATE_ADDRESS    0 // EEPROM storage location
 struct PumpState {
   const int version = STATE_VERSION;
   int direction; // DIR_CW or DIR_CC
-  int ms_index; // MS_MODE_AUTO or index of the selected microstep mode
+  bool ms_auto; // whether microstepping is in automatic mode or not
+  int ms_index; // the index of the currently active microstep mode
   int ms_mode; // stores the actual ms_mode that is active (just for convenience)
   int status; // STATUS_ON, OFF, HOLD
   float rpm; // speed in rotations / minute (actual speed in steps/s depends on microstepping mode)
@@ -20,8 +22,12 @@ struct PumpState {
   bool locked; // whether settings are locked
 
   PumpState() {};
-  PumpState(int direction, int ms_index, int status, float rpm, double step_flow, bool locked) :
-    direction(direction), ms_index(ms_index), status(status), rpm(rpm), step_flow(step_flow), locked(locked) {};
+  // construct PumpState in autostepping mode
+  PumpState(int direction, int status, float rpm, double step_flow, bool locked) :
+    direction(direction), ms_auto(true), ms_index(-1), status(status), rpm(rpm), step_flow(step_flow), locked(locked) {};
+  // construct PumpState with specific ms mode
+  PumpState(int direction, int status, float rpm, double step_flow, bool locked, int ms_index) :
+    direction(direction), ms_auto(false), ms_index(ms_index), status(status), rpm(rpm), step_flow(step_flow), locked(locked) {};
 };
 
 // state info
@@ -35,6 +41,7 @@ const PumpStateInfo STATUS_INFO[] = {
    {STATUS_ON, "on", "running"},
    {STATUS_OFF, "off", "off"},
    {STATUS_HOLD, "hold", "holding position"},
+   {STATUS_MANUAL, "man", "manual mode"},
    {STATUS_ROTATE, "rot", "executing number of rotations"},
    {STATUS_TRIGGER, "trig", "triggered by external signal"}
 };
@@ -71,8 +78,8 @@ static void get_pump_state_speed_info(float rpm, char* target_short, int size_sh
     snprintf(target_long, size_long, "%2.5f", rpm);
 }
 
-static void get_pump_state_ms_info(int ms_index, int ms_mode, char* target_short, int size_short, char* target_long, int size_long) {
-  if (ms_index == MS_MODE_AUTO) {
+static void get_pump_state_ms_info(bool ms_auto, int ms_mode, char* target_short, int size_short, char* target_long, int size_long) {
+  if (ms_auto) {
     snprintf(target_short, size_short, "%2dA", ms_mode);
     snprintf(target_long, size_long, "%2d (auto)", ms_mode);
   } else {

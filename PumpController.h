@@ -23,6 +23,7 @@ class PumpController {
     const int ms_modes_n; // number of microstepping modes
     MicrostepMode* ms_modes; // microstepping modes
     const PumpSettings settings; // settings
+    long update_status_time; // set specific time for delayed status updates
 
     // internal functions
     void extractCommandParam(char* param);
@@ -30,9 +31,8 @@ class PumpController {
     void updateStatus();
     void updateStatus(int status);
     float calculateSpeed();
-    int findAutoMicrostepIndex(float rpm);
-    int activateMicrostepping(int ms_index, float rpm);
-    bool setSpeedWithSteppingLimit(int ms_index, float rpm); // sets state.speed and returns true if request set, false if had to set to limit
+    int findMicrostepIndexForRpm(float rpm); // finds the correct ms index for the requested rpm (takes ms_auto into consideration)
+    bool setSpeedWithSteppingLimit(float rpm); // sets state.speed and returns true if request set, false if had to set to limit
 
     void savePumpState(); // returns TRUE if pump state was updated, FALSE if it didn't need updating
     bool loadPumpState(); // returns TRUE if pump state loaded successfully, FALSE if it didn't match the required structure and default was loaded instead
@@ -71,13 +71,17 @@ class PumpController {
     void init(bool reset); // whether to reset pump state back to the default
     void update(); // to be run during loop()
 
+    void setStatusUpdateDelay(long delay); // set a status update delay [in ms], call before making any status updates
+    void setAutoMicrosteppingMode(); // set to automatic icrostepping mode
     bool setMicrosteppingMode(int ms_mode); // set microstepping by mode, return false if can't find requested mode
     bool setSpeedRpm(float rpm); // return false if had to limit speed, true if taking speed directly
+    float getMaxRpm(); // returns the maximum rpm for the pump
     void setDirection(int direction); // set direction
 
     void lock(); // lock pump
     void unlock(); // unlock pump
 
+    void manual(); // turn into manual mode
     void start(); // start the pump
     void stop(); // stop the pump
     void hold(); // hold position
