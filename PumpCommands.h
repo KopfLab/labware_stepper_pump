@@ -30,6 +30,7 @@
 #define CMD_START       "start" // pump start [msg] : starts the pump
 #define CMD_STOP        "stop" // pump stop [msg] : stops the pump (stops power)
 #define CMD_HOLD        "hold" // pump hold [msg] : engage the pump but not running (power on, no flow)
+#define CMD_MANUAL      "manual" // pump manual [msg] : switches the pump to manual (i.e. analog signal) control
 #define CMD_RUN         "run" // pump run minutes [msg] : runs the pump for x minutes
 #define CMD_AUTO        "auto" // pump auto [msg] : listens to external trigger on the trigger pin
 #define CMD_DISPENSE    "dispense" // pump dispense amount [msg] : dispense a certain amount (requires step-flow calibration)
