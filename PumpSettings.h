@@ -9,8 +9,9 @@ struct StepperPins {
   const int ms1; // microstep 1
   const int ms2; // microstep 2
   const int ms3; // microstep 3
-  StepperPins(int dir, int step, int enable, int ms1, int ms2, int ms3) :
-    dir(dir), step(step), enable(enable), ms1(ms1), ms2(ms2), ms3(ms3) {};
+  const int manual; // analog manual signal
+  StepperPins(int dir, int step, int enable, int ms1, int ms2, int ms3, int manual) :
+    dir(dir), step(step), enable(enable), ms1(ms1), ms2(ms2), ms3(ms3), manual(manual) {};
 };
 
 // microstep mode structur (driver chip specific)

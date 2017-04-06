@@ -7,8 +7,6 @@
 // LED
 #define LED_pin A2
 
-#define POT_pin A4
-
 // reset
 #define RESET_pin A5
 
@@ -39,7 +37,8 @@ StepperPins pins(
   /* enable */  D7,
   /* ms1 */     D6,
   /* ms2 */     D5,
-  /* ms3 */     D4
+  /* ms3 */     D4,
+  /* manual */  A4 // analog speed control
 );
 
 // microstep modes of the chip (DRV8825)
@@ -162,7 +161,6 @@ void setup() {
 
   // pins
   pinMode(RESET_pin, INPUT_PULLDOWN);
-  pinMode(POT_pin, INPUT);
   pinMode(LED_pin, OUTPUT);
   digitalWrite(LED_pin, LOW);
 
@@ -210,19 +208,8 @@ void setup() {
   Particle.variable("state", state_information);
   Particle.subscribe("spark/", name_handler);
   Particle.connect();
+
 }
-
-
-// manual speed control
-
-#define MANUAL_read_interval 500 // [ms]
-long last_manual_read = 0;
-float last_manual_rpm = -1;
-float current_manual_rpm = 0;
-
-#define MANUAL_POT_DEBOUNCE 50    // the debounce time in ms
-
-
 
 void loop() {
   if (!name_handler_registered && Particle.connected()){
@@ -230,8 +217,6 @@ void loop() {
     name_handler_registered = Particle.publish("spark/device/name");
     Serial.println("INFO: name handler registered");
   }
-
-
 
   #ifdef ENABLE_DISPLAY
     lcd.update();

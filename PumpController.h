@@ -13,6 +13,10 @@ separate the mass/s aspects from the rest? probably not at the pump class level
 #include "PumpState.h"
 #include "PumpCommands.h"
 
+#define MANUAL_DEBOUNCE 50              // the debounce time for analog input in ms
+#define MANUAL_STATUS_UPDATE_DELAY 2000 // how long to wait for status update after manual adjustments [ms]
+
+
 // actual pump controller class
 class PumpController {
 
@@ -23,7 +27,10 @@ class PumpController {
     const int ms_modes_n; // number of microstepping modes
     MicrostepMode* ms_modes; // microstepping modes
     const PumpSettings settings; // settings
-    long update_status_time; // set specific time for delayed status updates
+    bool delay_status_update = false;
+    long update_status_time = 0; // set specific time for delayed status updates
+    long last_manual_read = 0; // last manual speed read time
+    float last_manual_rpm = -1; // last manual speed read
 
     // internal functions
     void extractCommandParam(char* param);

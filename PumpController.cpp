@@ -14,6 +14,9 @@ void PumpController::init(bool reset) {
   stepper.disableOutputs();
   stepper.setMaxSpeed(settings.max_speed);
 
+  // analog pin for manual mode
+  pinMode(pins.manual, INPUT);
+
   // microstepping
   pinMode(pins.ms1, OUTPUT);
   pinMode(pins.ms2, OUTPUT);
@@ -35,6 +38,14 @@ void PumpController::init(bool reset) {
 
 // loop function
 void PumpController::update() {
+  // check if it's time for a delayed status update
+  if (delay_status_update && millis() > update_status_time) {
+    Serial.println("INFO: finishing status update delay");
+    delay_status_update = false;
+    updateStatus();
+  }
+
+  // process STATUS dependent pump udpate
   if (state.status == STATUS_ROTATE) {
     // WARNING: FIXME known bug, when power out, saved rotate status will lead to immediate stop of pump
     if (stepper.distanceToGo() == 0) {
@@ -46,6 +57,25 @@ void PumpController::update() {
       stepper.runSpeedToPosition();
     }
   } else {
+    // check if need to adjust anything if in MANUAL mode
+    // FIXME: optimize the distruption to the stepper either by multi threading the LCD or by overwriting only the necessary characters always (I2C is the slowest part)
+    if (state.status == STATUS_MANUAL) {
+      float manual_rpm = round(analogRead(pins.manual)/4095.0 * getMaxRpm()); // particle ADC is 12-bit, i.e. 0-4095 range
+      if (manual_rpm != last_manual_rpm) {
+        // start debounce
+        last_manual_rpm = manual_rpm;
+        last_manual_read = millis();
+      } else if (manual_rpm == last_manual_rpm && millis() - last_manual_read > MANUAL_DEBOUNCE && manual_rpm != state.rpm) {
+        // stable signal for the duration of the debounce interval, different from active rpm
+        Serial.println("INFO: new manual rpm: " + String(manual_rpm));
+        setStatusUpdateDelay(MANUAL_STATUS_UPDATE_DELAY);
+        setSpeedRpm(manual_rpm);
+        strcpy(command.type, TYPE_EVENT);
+        strcpy(command.variable, "new rpm");
+        if (command_callback) command_callback(*this); // command reporting callback
+        updateStatus();
+      }
+    }
     stepper.runSpeed();
   }
 }
@@ -86,35 +116,43 @@ bool PumpController::loadPumpState(){
 
 /**** UPDATING PUMP STATUS ****/
 
+void PumpController::setStatusUpdateDelay(long delay) {
+  Serial.println("INFO: activating/resetting status update delay of " + String(delay) + "ms");
+  delay_status_update = true;
+  update_status_time = millis() + delay;
+}
+
 void PumpController::updateStatus() {
-  Serial.println("INFO: updating status");
+  if (delay_status_update) {
+    Serial.println("INFO: updating status is still delayed");
+  } else {
 
-  // save pump state to EEPROM
-  savePumpState();
+    // save pump state to EEPROM
+    Serial.println("INFO: updating status");
+    savePumpState();
 
-  // update microstepping
-  if (state.ms_index >= 0 && state.ms_index < ms_modes_n) {
-    digitalWrite(pins.ms1, ms_modes[state.ms_index].ms1);
-    digitalWrite(pins.ms2, ms_modes[state.ms_index].ms2);
-    digitalWrite(pins.ms3, ms_modes[state.ms_index].ms3);
+    // update microstepping
+    if (state.ms_index >= 0 && state.ms_index < ms_modes_n) {
+      digitalWrite(pins.ms1, ms_modes[state.ms_index].ms1);
+      digitalWrite(pins.ms2, ms_modes[state.ms_index].ms2);
+      digitalWrite(pins.ms3, ms_modes[state.ms_index].ms3);
+    }
+
+    // update speed
+    stepper.setSpeed(calculateSpeed());
+
+    // update enabled / disabled
+    if (state.status == STATUS_ON || state.status == STATUS_ROTATE || (state.status == STATUS_MANUAL && state.rpm > 0)) {
+      stepper.enableOutputs();
+    } else if (state.status == STATUS_HOLD) {
+      stepper.setSpeed(0);
+      stepper.enableOutputs();
+    } else {
+      // STATUS_OFF and STATUS_MANUAL but rpm == 0
+      stepper.setSpeed(0);
+      stepper.disableOutputs();
+    }
   }
-
-  // update speed
-  stepper.setSpeed(calculateSpeed());
-
-  // update status
-  if (state.status == STATUS_ON) {
-    stepper.enableOutputs();
-  } else if (state.status == STATUS_HOLD) {
-    stepper.setSpeed(0);
-    stepper.enableOutputs();
-  } else if (state.status == STATUS_OFF) {
-    stepper.setSpeed(0);
-    stepper.disableOutputs();
-  } else if (state.status == STATUS_ROTATE) {
-    stepper.enableOutputs();
-  }
-  //TODO: should throw error
 }
 
 void PumpController::updateStatus(int status) {
