@@ -12,38 +12,89 @@
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js" integrity="sha384-vBWWzlZJ8ea9aCX4pEW3rVHjgjt7zpkNpZk+02D9phzyeVkE+jo0ieGizqPLForn" crossorigin="anonymous"></script>
 
 <script type="text/javascript">
+  // connection variables
   var cmdFunc = "pump";
   var infoFunc = "state";
+  var requestInterval = 1000; // how often to ask for a status update (too fast and it will frequently time out)
+
+  // time out variables
+  var lastSuccess = 0; // unix timestamp of last succesful connection call
+  var lastDevice = "";
+  var maxTimeoutInterval = 3000; // ms to wait until a previously successful connection is considered a timeout
 
   window.setInterval(function() {
     var token = document.getElementById("token").value;
     var device = document.getElementById("device_id").value;
+    if (device != lastDevice) lastSuccess = 0; // reset if the device has changed
     if (token == "" || device == "") {
-      document.getElementById("connection").className = "";
-      document.getElementById("connection").innerHTML = "no token or device ID specified";
-      $( ".btn" ).each(function( index, element ) {
-        $( element ).prop('disabled', true);
-      })
+      updateStatus("no token or device ID specified", "");
       return;
     }
-    requestURL = "https://api.particle.io/v1/devices/" + device + "/" + infoFunc + "/?access_token=" + token;
-    $.getJSON(requestURL, function(json) {
-      // connection established
-      document.getElementById("connection").className = "text-success";
-      document.getElementById("connection").innerHTML = "connection established";
 
-      // parse data
-      var data = JSON.parse(json.result);
+    $.ajax({
+      type: "GET",
+      url: "https://api.particle.io/v1/devices/" + device + "/" + infoFunc,
+      data: "access_token=" + token,
+      timeout: 500,
+      dataType: "json",
+      success: function(json) {
+        console.log(new Date().toLocaleString() + ": information request successful");
+        lastSuccess = new Date().getTime();
+        lastDevice = device;
+        // parse data
+        var data = JSON.parse(json.result);
+        updateStatus("connection established", "text-success",
+            data.lock, data.status, parseFloat(data.rpm), data.ms, data.dir);
+      },
+      error: function(request, status, err) {
+        if (status == "timeout" && new Date().getTime() > lastSuccess + maxTimeoutInterval) {
+          console.log(new Date().toLocaleString() + ": information request timed out");
+          updateStatus("cannot connect (device offline)", "text-warning");
+        } else if (status == "timeout") {
+          console.log(new Date().toLocaleString() + ": information request timed out but within the acceptable timeout interval");
+        } else {
+          console.log(new Date().toLocaleString() + ": information request denied");
+          updateStatus("cannot connect (invalid token or device)", "text-danger");
+        }
+      }
+    });
 
-      // update lock information
-      var locked = data.lock == "locked";
-      if (locked)document.getElementById("state.lock").className = "text-danger";
-      else document.getElementById("state.lock").className = "text-success";
+  }, requestInterval);
 
-      // manual information
-      var manual = data.status == "manual mode";
+  // update connection status and information
+  function updateStatus(conn, conn_class, lock = "", status = "", rpm = "", ms = "", dir = "") {
 
-      $( ".btn" ).each(function( index, element ) {
+    // update text layout
+    document.getElementById("connection").className = conn_class;
+    switch(status) {
+        case "running": document.getElementById("state.status").className = "text-success"; break;
+        case "off": document.getElementById("state.status").className = "text-danger"; break;
+        default: document.getElementById("state.status").className = "";
+    }
+    var locked = lock == "locked";
+    switch (locked) {
+      case true: document.getElementById("state.lock").className = "text-danger"; break;
+      default: document.getElementById("state.lock").className = "text-success";
+    }
+
+    // update text info
+    document.getElementById("connection").innerHTML = conn;
+    document.getElementById("state.lock").innerHTML = lock;
+    document.getElementById("state.status").innerHTML = status;
+    document.getElementById("state.rpm").innerHTML = rpm;
+    document.getElementById("state.ms").innerHTML = ms;
+    document.getElementById("state.dir").innerHTML = dir;
+
+    // update rpm input
+    if (rpm != "" && document.getElementById("rpm").value == "") {
+      document.getElementById("rpm").value = rpm;
+    }
+
+    // update button enable/disable
+    var manual = status == "manual mode";
+    $( ".btn" ).each(function( index, element ) {
+      if (status == "") $( element ).prop('disabled', true); // no connection, all buttons disabled
+      else {
         if ( $( this ).is("#unlock") || $( this ).is("#lock") ) {
           $( element ).prop('disabled', false); // never locked
         } else if (locked) {
@@ -53,57 +104,47 @@
         } else {
           $( element ).prop('disabled', false); // nothing locked
         }
-      })
-
-      // status information
-      document.getElementById("state.lock").innerHTML = data.lock;
-      switch(data.status) {
-          case "running": document.getElementById("state.status").className = "text-success"; break;
-          case "off": document.getElementById("state.status").className = "text-danger"; break;
-          default: document.getElementById("state.status").className = "";
       }
-      document.getElementById("state.status").innerHTML = data.status;
+    })
+  }
 
-      // all other information
-      document.getElementById("state.rpm").innerHTML = String(parseFloat(data.rpm));
-      if (document.getElementById("rpm").value == "") document.getElementById("rpm").value = String(parseFloat(data.rpm));
-      document.getElementById("state.ms").innerHTML = data.ms;
-      document.getElementById("state.dir").innerHTML = data.dir;
-    }).error(function() {
-      // TODO: simplify both success and error with an update function
-      document.getElementById("connection").className = "text-danger";
-      document.getElementById("connection").innerHTML = "can't connect (invalid token or device)";
-      document.getElementById("state.lock").innerHTML = "";
-      document.getElementById("state.status").innerHTML = "";
-      document.getElementById("state.rpm").innerHTML = "";
-      document.getElementById("state.ms").innerHTML = "";
-      document.getElementById("state.dir").innerHTML = "";
-
-      $( ".btn" ).each(function( index, element ) {
-        $( element ).prop('disabled', true);
-      })
-    });
-  }, 1000);
-
+  // send command to particle photon
   function sendCmd(command) {
+    console.log(new Date().toLocaleString() + ": sending command '" + command + "'");
     var token = document.getElementById("token").value;
     var device = document.getElementById("device_id").value;
     if (token == "" || device == "") {
       alert("Must enter valid account token and device ID before issuing commands.");
       return;
     }
-    var note = document.getElementById("note").value;
-    if (note.length > 0) command = command + " " + note;
-    document.getElementById("note").value = "";
-    var requestURL = "https://api.particle.io/v1/devices/" + device + "/" + cmdFunc + "/";
-    var posting = $.post( requestURL, { params: command, access_token: token });
+    var posting = $.post(
+      "https://api.particle.io/v1/devices/" + device + "/" + cmdFunc + "/",
+      { params: command, access_token: token });
     posting.done(function(data) {
       var return_value = parseInt(data.return_value);
-      if (return_value < 0) alert("ERROR: Command could not be executed. Error code " + String(return_value));
-      else if (return_value > 0) alert("WARNING: Command caused a warning. Warning code " + String(return_value));
+      var status = "successfully executed";
+
+      // process return value
+      if (return_value < 0) {
+        console.log(new Date().toLocaleString() + ": command generated an error code " + return_value);
+        alert("ERROR: Command could not be executed. Error code " + String(return_value));
+        status = "command FAILED, error code: " + return_value;
+      } else if (return_value > 0) {
+        console.log(new Date().toLocaleString() + ": command generated a warning code " + return_value);
+        alert("WARNING: Command caused a warning. Warning code " + String(return_value));
+        status = "command successful but with warning code: " + return_value;
+      } else {
+        console.log(new Date().toLocaleString() + ": command sent successfully");
+      }
+
+      // update command history
+      var history = document.getElementById("command.history").innerHTML;
+      document.getElementById("command.history").innerHTML =
+        new Date().toLocaleString() + ": " + command + " (" + status + ")" + "<br/>" + history ;
     });
   }
 
+  // valid particle photon commands
   function lock() { sendCmd("lock") }
   function unlock() { sendCmd("unlock") }
   function start() { sendCmd("start") }
@@ -127,12 +168,13 @@
 
     <div class="col col-md-6">
 
-      <h1>Pump access</h1>
+      <h1>Pump Information</h1>
+      <br/><h3>Identification</h3>
 
-      <h4>Token : <input type="text" id="token" value="" style="width: 200px;"/></h4>
-      <h4>Device: <input type="text" id="device_id" value="" style="width: 200px;"/></h4>
+      <h4>Token : <input type="text" id="token" style="width: 200px;" value = ""/></h4>
+      <h4>Device: <input type="text" id="device_id" style="width: 200px;" value = ""/></h4>
 
-      <h1>Pump status</h1>
+      <br/><h3>Status</h3>
 
       <h4>Connection: <strong><span id="connection"></span></strong></h4>
       <h4>Access: <strong><span id="state.lock"></span></strong></h4>
@@ -141,6 +183,9 @@
       <h4>Speed: <strong><span id="state.rpm"></span> rpm</strong></h4>
       <h4>Microstepping: <strong><span id="state.ms"></span></strong></h4>
 
+      <br/><h3>Command history</h3>
+
+      <p><span id="command.history"></span></p>
 
     </div>
 
@@ -148,7 +193,7 @@
 
       <h1>Pump control</h1>
 
-      <h3>Access</h3>
+      <br/><h3>Access</h3>
 
       <p>
         <button type="button"  class="btn btn-danger" id="lock" onclick="lock()"
@@ -157,7 +202,7 @@
           title="Unlock the pump access so properties can be changed again.">Unlock</button>
       </p>
 
-      <h3>Operation</h3>
+      <br/><h3>Operation</h3>
 
       <p>
         <button type="button"  class="btn btn-success" id="on" onclick="start()"
@@ -176,7 +221,7 @@
           title="Run pump for a specific number of rotations at the set speed (pump will stop and hold when done).">Run</button>
       </p>
 
-      <h3>Speed control</h3>
+      <br/><h3>Speed control</h3>
 
       <p>
         <div class="btn-group">
@@ -204,13 +249,6 @@
 
       <p>
         <button type="button" class="btn btn-primary" id="switch" onclick="switchDirection()">Switch direction</button>
-      </p>
-
-      <h3>Notes</h3>
-      <p>
-        The following note will be attached to the next control commmand.<br/>
-        Notes are optional but can be helpful for keeping a log of events.<br/>
-        <br/><input type="text" id="note" value="" style="width: 300px;"/>
       </p>
 
     </div>
