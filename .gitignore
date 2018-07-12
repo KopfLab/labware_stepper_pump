@@ -30,3 +30,6 @@
 *.app
 *_v*.fzz
 *.zip
+
+# PCB
+*pcb

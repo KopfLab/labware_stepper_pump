@@ -12,4 +12,9 @@
   - 893mV --> 860mA in full step, 1390mA in microstepping
   - This is actually an almost perfect linearity of 1.6 instead of 2
  - NOTE: the trim pot voltage is most easily adjusted with a voltmeter attached to the screwdriver (easer with flat head than with cross)
- 
+
+# For Watson Marlow stepper motor pump head
+
+  - adjust to <= 1200mA in microstepping mode (Vref ~ 700mV)
+
+  

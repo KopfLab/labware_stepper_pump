@@ -20,20 +20,20 @@ struct MicrostepMode {
   bool ms1; // HIGH or LOW for ms1
   bool ms2; // HIGH or LOW for ms2
   bool ms3; // HIGH or LOW for ms3
-  float rpm_limit; // the RPM limit for this microstepping mode (filled by PumpController later)
+  float rpm_limit; // the RPM limit for this microstepping mode (filled by StepperController later)
   MicrostepMode() {};
   MicrostepMode(int mode, bool ms1, bool ms2, bool ms3) :
     mode(mode), ms1(ms1), ms2(ms2), ms3(ms3), rpm_limit(-1) {}
 };
 
 // pump settings (microcontroller and pump stepper specific)
-struct PumpSettings {
+struct StepperSettings {
 public:
   int steps; // numer of steps / rotation
   double gearing; // the gearing (if any, otherwise should be 1)
-  float max_speed; // maximum # of steps/s the processor can reliably support (i.e. how often can the PumpController::update() be called?)
+  float max_speed; // maximum # of steps/s the processor can reliably support (i.e. how often can the StepperController::update() be called?)
 
-  PumpSettings(int steps, double gearing, float max_speed) :
+  StepperSettings(int steps, double gearing, float max_speed) :
     steps(steps), gearing(gearing), max_speed(max_speed) {};
 
 };

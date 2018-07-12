@@ -27,7 +27,7 @@
     var device = document.getElementById("device_id").value;
     if (device != lastDevice) lastSuccess = 0; // reset if the device has changed
     if (token == "" || device == "") {
-      updateStatus("no token or device ID specified", "");
+      updateStepper("no token or device ID specified", "");
       return;
     }
 
@@ -43,18 +43,18 @@
         lastDevice = device;
         // parse data
         var data = JSON.parse(json.result);
-        updateStatus("connection established", "text-success",
+        updateStepper("connection established", "text-success",
             data.lock, data.status, parseFloat(data.rpm), data.ms, data.dir);
       },
       error: function(request, status, err) {
         if (status == "timeout" && new Date().getTime() > lastSuccess + maxTimeoutInterval) {
           console.log(new Date().toLocaleString() + ": information request timed out");
-          updateStatus("cannot connect (device offline)", "text-warning");
+          updateStepper("cannot connect (device offline)", "text-warning");
         } else if (status == "timeout") {
           console.log(new Date().toLocaleString() + ": information request timed out but within the acceptable timeout interval");
         } else {
           console.log(new Date().toLocaleString() + ": information request denied");
-          updateStatus("cannot connect (invalid token or device)", "text-danger");
+          updateStepper("cannot connect (invalid token or device)", "text-danger");
         }
       }
     });
@@ -62,7 +62,7 @@
   }, requestInterval);
 
   // update connection status and information
-  function updateStatus(conn, conn_class, lock = "", status = "", rpm = "", ms = "", dir = "") {
+  function updateStepper(conn, conn_class, lock = "", status = "", rpm = "", ms = "", dir = "") {
 
     // update text layout
     document.getElementById("connection").className = conn_class;

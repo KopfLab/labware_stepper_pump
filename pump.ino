@@ -1,8 +1,14 @@
 #pragma SPARK_NO_PREPROCESSOR // disable spark preprocssor to avoid issues with callbacks
 #include "application.h"
 
-#define ENABLE_DISPLAY
-//#define ENABLE_LOGGING
+// debugging options
+#define CLOUD_DEBUG_ON
+//#define WEBHOOKS_DEBUG_ON
+#define STATE_DEBUG_ON
+//#define DATA_DEBUG_ON
+//#define SERIAL_DEBUG_ON
+//#define LCD_DEBUG_ON
+#define PUMP_DEBUG_ON
 
 // LED
 #define LED_pin A2
@@ -28,7 +34,7 @@ GsWebhook gs ("post_to_gs");
 #endif
 
 /*** pump controller ***/
-#include "PumpController.h"
+#include "StepperController.h"
 
 // pins of the stepper
 StepperPins pins(
@@ -55,7 +61,7 @@ MicrostepMode microstep_modes[microstep_modes_n] =
   };
 
 // settings of the pump and microcontroller
-PumpSettings settings(
+StepperSettings settings(
   /* steps */      200, // 200 steps/rotation
   /* gearing */     1, // 5.18:1 planetary gear box
   /* max_speed */  1000  // max steps/s (how often particle can reliably call update)
@@ -88,7 +94,7 @@ char locked_web[20];
 
 void update_user_interface (PumpState state) {
   // led update
-  if (state.status == STATUS_ON) {
+  if (state->status == STATUS_ON) {
     digitalWrite(LED_pin, HIGH);
   } else {
     // FIXME: ideally blink if it is holding
@@ -96,11 +102,11 @@ void update_user_interface (PumpState state) {
   }
 
   // user interface update text
-  get_pump_state_status_info(state.status, status_lcd, sizeof(status_lcd), status_web, sizeof(status_web));
-  get_pump_state_speed_info(state.rpm, rpm_lcd, sizeof(rpm_lcd), rpm_web, sizeof(rpm_web));
-  get_pump_state_ms_info(state.ms_auto, state.ms_mode, ms_mode_lcd, sizeof(ms_mode_lcd), ms_mode_web, sizeof(ms_mode_web));
-  get_pump_state_direction_info(state.direction, dir_lcd, sizeof(dir_lcd), dir_web, sizeof(dir_web) );
-  get_pump_stat_locked_info(state.locked, locked_lcd, sizeof(locked_lcd), locked_web, sizeof(locked_web));
+  getPumpStateStatusInfo(state->status, status_lcd, sizeof(status_lcd), status_web, sizeof(status_web));
+  getPumpStateSpeedInfo(state->rpm, rpm_lcd, sizeof(rpm_lcd), rpm_web, sizeof(rpm_web));
+  getStepperStateMSInfo(state->ms_auto, state->ms_mode, ms_mode_lcd, sizeof(ms_mode_lcd), ms_mode_web, sizeof(ms_mode_web));
+  getPumpStateDirectionInfo(state->direction, dir_lcd, sizeof(dir_lcd), dir_web, sizeof(dir_web) );
+  get_pump_stat_locked_info(state->locked, locked_lcd, sizeof(locked_lcd), locked_web, sizeof(locked_web));
 
   // serial (for debugging)
   Serial.println("@UI - Status: " + String(status_lcd));
@@ -123,7 +129,7 @@ void update_user_interface (PumpState state) {
 }
 
 // callback function for pump commands
-void report_pump_command (const PumpController& pump) {
+void report_pump_command (const StepperController& pump) {
   // report command on user interface
   Serial.println("INFO: pump command - " +
     String(pump.command.type) + " " +
@@ -139,7 +145,7 @@ void report_pump_command (const PumpController& pump) {
   #endif
 }
 
-PumpController pump(pins, microstep_modes, microstep_modes_n, settings, state, report_pump_command);
+StepperController pump(pins, microstep_modes, microstep_modes_n, settings, state, report_pump_command);
 
 // device name
 char device_name[20];
@@ -210,6 +216,19 @@ void setup() {
   Particle.connect();
 
 }
+
+/*
+// maybe test this more
+// might need a system where every line of LCD screen gets stored in a String
+// and then only updated in the separate threat whenever necessary
+led1Thread = new Thread("sample", test_lcd);
+Thread* led1Thread;
+
+os_thread_return_t test_lcd(){
+    for(;;) {
+        lcd.update();
+    }
+}*/
 
 void loop() {
   if (!name_handler_registered && Particle.connected()){
