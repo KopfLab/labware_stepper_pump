@@ -53,6 +53,7 @@ class StepperController : public DeviceController {
     bool hold(); // hold position
     long rotate(float number); // returns the number of steps the motor will take
 
+    DeviceState* getDS() { return(ds); }; // return device state
     void saveDS(); // save device state to EEPROM
     bool restoreDS(); // load device state from EEPROM
 

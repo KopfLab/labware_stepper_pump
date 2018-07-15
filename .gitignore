@@ -33,3 +33,6 @@
 
 # PCB
 *pcb
+
+# docs
+*.pdf
