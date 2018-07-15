@@ -1,40 +1,26 @@
 #pragma once
-#include "StepperState->h"
-#include "StepperSettings.h"
-#include "PumpCommands.h"
+#include "StepperState.h"
+#include "StepperConfig.h"
+#include "StepperCommands.h"
 #include "device/DeviceController.h"
 #include <AccelStepper.h>
 
-
-// FIXME: REMOVE manual!
-#define MANUAL_DEBOUNCE 50              // the debounce time for analog input in ms
-#define MANUAL_STATUS_UPDATE_DELAY 2000 // how long to wait for status update after manual adjustments [ms]
-
-
-// actual pump controller class
-// FIXME:
+// stepper controller class
 class StepperController : public DeviceController {
 
   private:
 
-    AccelStepper stepper; // stepper
-    const StepperPins pins; // pins
-    const int ms_modes_n; // number of microstepping modes
-    MicrostepMode* ms_modes; // microstepping modes
-    const StepperSettings settings; // settings
-    bool delay_status_update = false;
-    long update_status_time = 0; // set specific time for delayed status updates
-    long last_manual_read = 0; // last manual speed read time
-    float last_manual_rpm = -1; // last manual speed read
-
     // internal functions
-    void extractCommandParam(char* param);
-    void assignCommandMessage();
-    void updateStepper();
-    bool changeStatus(int status);
-    float calculateSpeed();
+    void updateStepper(); // update stepper object
+    float calculateSpeed(); // calculate speed based on settings
     int findMicrostepIndexForRpm(float rpm); // finds the correct ms index for the requested rpm (takes ms_auto into consideration)
     bool setSpeedWithSteppingLimit(float rpm); // sets state->speed and returns true if request set, false if had to set to limit
+
+    // configuration
+    StepperBoard* board;
+    StepperDriver* driver;
+    StepperMotor* motor;
+    AccelStepper stepper;
 
     // state
     StepperState* state;
@@ -42,91 +28,86 @@ class StepperController : public DeviceController {
 
   public:
 
-    // command
-    PumpCommand command;
-
-    // callback
-    typedef void (*PumpCommandCallbackType) (const StepperController&);
-
     // constructors
-    StepperController (StepperPins pins, MicrostepMode* ms_modes, int ms_modes_n,
-      StepperSettings settings, StepperState state, PumpCommandCallbackType callback) :
-    pins(pins), ms_modes_n(ms_modes_n), settings(settings), state(state), command_callback(callback) {
-      Particle.function(CMD_ROOT, &StepperController::parseCommand, this);
-      // allocate microstep modes and calculate rpm limits for each
-      this->ms_modes = new MicrostepMode[ms_modes_n];
-      for (int i = 0; i < ms_modes_n; i++) {
-        this->ms_modes[i] = ms_modes[i];
-        this->ms_modes[i].rpm_limit = settings.max_speed * 60.0 / (settings.steps * settings.gearing * ms_modes[i].mode);
-      }
-    }
+    StepperController() {};
 
-    // destructor (deallocate ms_modes)
-    virtual ~StepperController(){
-       delete[] ms_modes;
-    }
+    StepperController (int reset_pin, DeviceDisplay* lcd, StepperBoard* board, StepperDriver* driver, StepperMotor* motor, StepperState* state) :
+      DeviceController(reset_pin, lcd), board(board), driver(driver), motor(motor), state(state) {
+        driver->calculateRpmLimits(board->max_speed, motor->steps, motor->gearing);
+    };
 
     // methods
     void init(); // to be run during setup()
-    void init(bool reset); // whether to reset pump state back to the default
     void update(); // to be run during loop()
 
-    void setStatusUpdateDelay(long delay); // set a status update delay [in ms], call before making any status updates
-    void setAutoMicrosteppingMode(); // set to automatic icrostepping mode
-    bool setMicrosteppingMode(int ms_mode); // set microstepping by mode, return false if can't find requested mode
-    bool setSpeedRpm(float rpm); // return false if had to limit speed, true if taking speed directly
     float getMaxRpm(); // returns the maximum rpm for the pump
-    void setDirection(int direction); // set direction
 
-    void lock(); // lock pump
-    void unlock(); // unlock pump
+    bool changeStatus(int status);
+    bool changeDirection(int direction);
+    bool changeSpeedRpm(float rpm); // return false if had to limit speed, true if taking speed directly
+    bool changeToAutoMicrosteppingMode(); // set to automatic microstepping mode
+    bool changeMicrosteppingMode(int ms_mode); // set microstepping by mode, return false if can't find requested mode
 
-    void manual(); // turn into manual mode
-    void start(); // start the pump
-    void stop(); // stop the pump
-    void hold(); // hold position
-    long rotate(double number); // returns the number of steps the motor will take
-
-    int parseCommand (String command); // parse a cloud command
+    bool start(); // start the pump
+    bool stop(); // stop the pump
+    bool hold(); // hold position
+    long rotate(float number); // returns the number of steps the motor will take
 
     void saveDS(); // save device state to EEPROM
     bool restoreDS(); // load device state from EEPROM
 
-  // pump command callback
-  private: PumpCommandCallbackType command_callback;
+    void assembleStateInformation();
+
+    void parseCommand();
+    bool parseStatus();
+    bool parseDirection();
+    bool parseSpeed();
+    bool parseMS();
 
 };
 
 /**** SETUP AND LOOP ****/
 
-// FIXME: done
 void StepperController::init() {
-  stepper = AccelStepper(AccelStepper::DRIVER, pins.step, pins.dir);
-  stepper.setEnablePin(pins.enable);
+  stepper = AccelStepper(AccelStepper::DRIVER, board->step, board->dir);
+  stepper.setEnablePin(board->enable);
   stepper.setPinsInverted	(
-            PIN_STEP_ON != HIGH,
-            PIN_DIR_CW != LOW,
-            PIN_ENABLE_ON != LOW
+            driver->step_on != HIGH,
+            driver->dir_cw != LOW,
+            driver->enable_on != LOW
         );
   stepper.disableOutputs();
-  stepper.setMaxSpeed(settings.max_speed);
+  stepper.setMaxSpeed(board->max_speed);
 
   // microstepping
-  pinMode(pins.ms1, OUTPUT);
-  pinMode(pins.ms2, OUTPUT);
-  pinMode(pins.ms3, OUTPUT);
-  #ifdef PUMP_DEBUG_ON
+  pinMode(board->ms1, OUTPUT);
+  pinMode(board->ms2, OUTPUT);
+  pinMode(board->ms3, OUTPUT);
+  #ifdef STEPPER_DEBUG_ON
     Serial.println("INFO: available microstepping modes");
-    for (int i = 0; i < ms_modes_n; i++) {
-      Serial.printf("   Mode %d: %s steps, max rpm: %.1f\n", i, ms_modes[i].mode, ms_modes[i].rpm_limit);
+    for (int i = 0; i < driver->ms_modes_n; i++) {
+      Serial.printf("   Mode %d: %s steps, max rpm: %.1f\n", i, driver->ms_modes[i].mode, driver->ms_modes[i].rpm_limit);
     }
   #endif
 
-  SerialDeviceController::init();
+  DeviceController::init();
   updateStepper();
 }
 
-
+// loop function
+void StepperController::update() {
+  if (state->status == STATUS_ROTATE) {
+    // WARNING: FIXME known bug, when power out, saved rotate status will lead to immediate stop of pump
+    if (stepper.distanceToGo() == 0) {
+      changeStatus(STATUS_OFF); // disengage if reached target location
+    } else {
+      stepper.runSpeedToPosition();
+    }
+  } else {
+    stepper.runSpeed();
+  }
+  DeviceController::update();
+}
 
 /**** STATE PERSISTENCE ****/
 
@@ -142,160 +123,127 @@ void StepperController::saveDS() {
 bool StepperController::restoreDS(){
   StepperState saved_state;
   EEPROM.get(STATE_ADDRESS, saved_state);
-  bool recoverable = saved_state->version == STATE_VERSION;
+  bool recoverable = saved_state.version == STATE_VERSION;
   if(recoverable) {
     EEPROM.get(STATE_ADDRESS, *state);
     Serial.printf("INFO: successfully restored state from memory (version %d)\n", STATE_VERSION);
   } else {
-    Serial.printf("INFO: could not restore state from memory (found version %d), sticking with initial default\n", saved_state->version);
+    Serial.printf("INFO: could not restore state from memory (found version %d), sticking with initial default\n", saved_state.version);
     saveDS();
   }
   return(recoverable);
 }
 
-/**** UPDATING PUMP STATUS ****/
-
-bool DeviceController::changeStateLogging (bool on) {
-  bool changed = on != getDS()->state_logging;
-
-  if (changed) {
-    getDS()->state_logging = on;
-    override_state_log = true; // always log this event no matter what
-  }
-
-  #ifdef STATE_DEBUG_ON
-    if (changed)
-      on ? Serial.println("INFO: state logging turned on") : Serial.println("INFO: state logging turned off");
-    else
-      on ? Serial.println("INFO: state logging already on") : Serial.println("INFO: state logging already off");
-  #endif
-
-  if (changed) saveDS();
-
-  return(changed);
-}
+/**** UPDATING STEPPER ****/
 
 void StepperController::updateStepper() {
+  // update microstepping
+  if (state->ms_index >= 0 && state->ms_index < driver->ms_modes_n) {
+    digitalWrite(board->ms1, driver->ms_modes[state->ms_index].ms1);
+    digitalWrite(board->ms2, driver->ms_modes[state->ms_index].ms2);
+    digitalWrite(board->ms3, driver->ms_modes[state->ms_index].ms3);
+  }
 
-    // update microstepping
-    if (state->ms_index >= 0 && state->ms_index < ms_modes_n) {
-      digitalWrite(pins.ms1, ms_modes[state->ms_index].ms1);
-      digitalWrite(pins.ms2, ms_modes[state->ms_index].ms2);
-      digitalWrite(pins.ms3, ms_modes[state->ms_index].ms3);
-    }
+  // update speed
+  stepper.setSpeed(calculateSpeed());
 
-    // update speed
-    stepper.setSpeed(calculateSpeed());
-
-    // update enabled / disabled
-    if (state->status == STATUS_ON || state->status == STATUS_ROTATE) {
-      stepper.enableOutputs();
-    } else if (state->status == STATUS_HOLD) {
-      stepper.setSpeed(0);
-      stepper.enableOutputs();
-    } else {
-      // STATUS_OFF
-      stepper.setSpeed(0);
-      stepper.disableOutputs();
-    }
+  // update enabled / disabled
+  if (state->status == STATUS_ON || state->status == STATUS_ROTATE) {
+    stepper.enableOutputs();
+  } else if (state->status == STATUS_HOLD) {
+    stepper.setSpeed(0);
+    stepper.enableOutputs();
+  } else {
+    // STATUS_OFF
+    stepper.setSpeed(0);
+    stepper.disableOutputs();
   }
 }
 
-
-
 float StepperController::calculateSpeed() {
-  float speed = state->rpm/60.0 * settings.steps * settings.gearing * state->ms_mode * state->direction;
-  Serial.println("INFO: calculated speed " + String(speed));
+  float speed = state->rpm/60.0 * motor->steps * motor->gearing * state->ms_mode * state->direction;
+  #ifdef STEPPER_DEBUG_ON
+    Serial.printf("INFO: calculated speed %.5f\n", speed);
+  #endif
   return(speed);
 }
 
-
 /* DEVICE STATE CHANGE FUNCTIONS */
 
-
-// FIXME: done
 bool StepperController::changeStatus(int status) {
 
-  // update status value
+  // only update if necessary
   bool changed = status != state->status;
-  if (changed) state->status = status;
 
-  #ifdef PUMP_DEBUG_ON
+  #ifdef STEPPER_DEBUG_ON
     if (changed)
-      Serial.printf("INFO: status updated to %d\n", status);
+      Serial.printf("INFO: status updating to %d\n", status);
     else
       Serial.printf("INFO: status unchanged (%d)\n", status);
   #endif
 
-  updateStepper();
-
-  if (changed) saveDS();
+  if (changed) {
+    state->status = status;
+    updateStepper();
+    saveDS();
+  }
   return(changed);
 }
 
-// FIXME:
-void StepperController::setAutoMicrosteppingMode() {
-  Serial.println("INFO: activating automatic microstepping");
-  state->ms_auto = true;
-  state->ms_index = findMicrostepIndexForRpm(state->rpm);
-  state->ms_mode = ms_modes[state->ms_index].mode; // tracked for convenience
-  updateStepper();
-}
+bool StepperController::changeDirection(int direction) {
 
-// FIXME:
-bool StepperController::setMicrosteppingMode(int ms_mode) {
+  // only update if necessary
+  bool changed = (direction == DIR_CW || direction == DIR_CC) && state->direction != direction;
 
-  // find index for requested microstepping mode
-  int ms_index = -1;
-  for (int i = 0; i < ms_modes_n; i++) {
-    if (ms_modes[i].mode == ms_mode) {
-      ms_index = i;
-      break;
+  #ifdef STEPPER_DEBUG_ON
+    if (changed)
+      (direction == DIR_CW) ? Serial.println("INFO: changing direction to clockwise") : Serial.println("INFO: changing direction to counter clockwise");
+    else
+      (direction == DIR_CW) ? Serial.println("INFO: direction unchanged (clockwise)") : Serial.println("INFO: direction unchanged (counter clockwise)");
+  #endif
+
+  if (changed) {
+    state->direction = direction;
+    if (state->status == STATUS_ROTATE) {
+      // if rotating to a specific position, changing direction turns the pump off
+      #ifdef STEPPER_DEBUG_ON
+        Serial.println("INFO: stepper stopped due to change in direction during 'rotate'");
+      #endif
+      state->status = STATUS_OFF;
     }
+    updateStepper();
+    saveDS();
   }
 
-  // no index found for requested mode
-  if (ms_index == -1) return(false);
-
-  Serial.println("INFO: activating microstepping index " +  String(ms_index) + " for mode " + String(ms_modes[ms_index].mode));
-  // update with new microstepping mode
-  state->ms_auto = false; // deactivate auto microstepping
-  state->ms_index = ms_index; // set the found index
-  state->ms_mode = ms_modes[state->ms_index].mode; // tracked for convenience
-  setSpeedWithSteppingLimit(state->rpm); // update speed (if necessary)
-  updateStepper();
-  return(true);
+  return(changed);
 }
 
-// FIXME:
-int StepperController::findMicrostepIndexForRpm(float rpm) {
-  if (state->ms_auto) {
-    // automatic mode --> find lowest MS mode that can handle these rpm (otherwise go to full step -> ms_index = 0)
-    int ms_index = 0;
-    for (int i = 1; i < ms_modes_n; i++) {
-      if (rpm <= ms_modes[i].rpm_limit) ms_index = i;
-    }
-    return(ms_index);
-  } else {
-    return(state->ms_index);
-  }
-}
-
-// FIXME:
-bool StepperController::setSpeedRpm(float rpm) {
+bool StepperController::changeSpeedRpm(float rpm) {
+  int original_ms_mode = state->ms_mode;
+  float original_rpm = state->rpm;
   state->ms_index = findMicrostepIndexForRpm(rpm);
-  state->ms_mode = ms_modes[state->ms_index].mode; // tracked for convenience
-  bool limited = setSpeedWithSteppingLimit(rpm);
-  updateStepper();
-  return(limited);
+  state->ms_mode = driver->getMode(state->ms_index); // tracked for convenience
+  setSpeedWithSteppingLimit(rpm);
+  bool changed = state->ms_mode != original_ms_mode | !approximatelyEqual(state->rpm, rpm, 0.0001);
+
+  #ifdef STEPPER_DEBUG_ON
+    if (changed)
+      Serial.printf("INFO: changing rpm %.3f\n", state->rpm);
+    else
+      Serial.printf("INFO: rpm staying unchanged ()%.3f)\n", state->rpm);
+  #endif
+
+  if (changed) {
+    updateStepper();
+    saveDS();
+  }
+  return(changed);
 }
 
-// FIXME:
 bool StepperController::setSpeedWithSteppingLimit(float rpm) {
-  if (rpm > ms_modes[state->ms_index].rpm_limit) {
-    Serial.println("WARNING: stepping mode is not fast enough for the requested rpm: " + String(rpm));
-    Serial.println("  --> switching to MS mode rpm limit of " + String(ms_modes[state->ms_index].rpm_limit));
-    state->rpm = ms_modes[state->ms_index].rpm_limit;
+  if (driver->testRpmLimit(state->ms_index, rpm)) {
+    state->rpm = driver->getRpmLimit(state->ms_index);
+    Serial.printf("WARNING: stepping mode is not fast enough for the requested rpm: %.3f --> switching to MS mode rpm limit of %.3f\n", rpm, state->rpm);
     return(false);
   } else {
     state->rpm = rpm;
@@ -303,161 +251,237 @@ bool StepperController::setSpeedWithSteppingLimit(float rpm) {
   }
 }
 
-// FIXME:
-float StepperController::getMaxRpm() {
-  // assume full step mode is index 0 and has the highest rpm_limit
-  return(ms_modes[0].rpm_limit);
+bool StepperController::changeToAutoMicrosteppingMode() {
+
+  bool changed = !state->ms_auto;
+
+  #ifdef STEPPER_DEBUG_ON
+    if (changed)
+      Serial.println("INFO: activating automatic microstepping");
+    else
+      Serial.println("INFO: automatic microstepping already active");
+  #endif
+
+  if (changed) {
+    state->ms_auto = true;
+    state->ms_index = findMicrostepIndexForRpm(state->rpm);
+    state->ms_mode = driver->getMode(state->ms_index); // tracked for convenience
+    updateStepper();
+    saveDS();
+  }
+  return(changed);
 }
 
-// FIXME:
-void StepperController::setDirection(int direction) {
-  // only update if necesary
-  if ( (direction == DIR_CW || direction == DIR_CC) && state->direction != direction) {
-    state->direction = direction;
-    // if rotating to a specific position, changing direction turns the pump off
-    if (state->status == STATUS_ROTATE) {
-      state->status = STATUS_OFF;
-    }
+bool StepperController::changeMicrosteppingMode(int ms_mode) {
+
+  // find index for requested microstepping mode
+  int ms_index = driver->findMicrostepIndexForMode(ms_mode);
+
+  // no index found for requested mode
+  if (ms_index == -1) {
+    Serial.printf("WARNING: could not find microstep index for mode %d\n", ms_mode);
+    return(false);
+  }
+
+  bool changed = state->ms_auto | state->ms_index != ms_index;
+  #ifdef STEPPER_DEBUG_ON
+    if (changed)
+      Serial.printf("INFO: activating microstepping index %d for mode %d\n", ms_index, ms_mode);
+    else
+      Serial.printf("INFO: microstepping mode already active (%d)\n", state->ms_mode);
+  #endif
+
+  if (changed) {
+    // update with new microstepping mode
+    state->ms_auto = false; // deactivate auto microstepping
+    state->ms_index = ms_index; // set the found index
+    state->ms_mode = driver->getMode(ms_index); // tracked for convenience
+    setSpeedWithSteppingLimit(state->rpm); // update speed (if necessary)
     updateStepper();
+    saveDS();
+  }
+  return(changed);
+}
+
+int StepperController::findMicrostepIndexForRpm(float rpm) {
+  if (state->ms_auto) {
+    // automatic mode --> find lowest MS mode that can handle these rpm (otherwise go to full step -> ms_index = 0)
+    return(driver->findMicrostepIndexForRpm(rpm));
+  } else {
+    return(state->ms_index);
   }
 }
 
-// FIXME: done
-void StepperController::start() { changeStatus(STATUS_ON); }
-void StepperController::stop() { changeStatus(STATUS_OFF); }
-void StepperController::hold() { changeStatus(STATUS_HOLD); }
+// start, stop, hold
+bool StepperController::start() { changeStatus(STATUS_ON); }
+bool StepperController::stop() { changeStatus(STATUS_OFF); }
+bool StepperController::hold() { changeStatus(STATUS_HOLD); }
 
 // number of rotations
-// FIXME:
-long StepperController::rotate(double number) {
-  long steps = state->direction * number * settings.steps * settings.gearing * state->ms_mode;
+long StepperController::rotate(float number) {
+  long steps = state->direction * number * motor->steps * motor->gearing * state->ms_mode;
   stepper.setCurrentPosition(0);
   stepper.moveTo(steps);
-  updateStepper(STATUS_ROTATE);
+  changeStatus(STATUS_ROTATE);
   return(steps);
+}
+
+/****** STATE INFORMATION *******/
+
+void StepperController::assembleStateInformation() {
+  DeviceController::assembleStateInformation();
+  char pair[60];
+  getStepperStateStatusInfo(state->status, pair, sizeof(pair)); addToStateInformation(pair);
+  getStepperStateDirectionInfo(state->direction, pair, sizeof(pair)); addToStateInformation(pair);
+  getStepperStateSpeedInfo(state->rpm, pair, sizeof(pair)); addToStateInformation(pair);
+  getStepperStateMSInfo(state->ms_auto, state->ms_mode, pair, sizeof(pair)); addToStateInformation(pair);
 }
 
 /****** WEB COMMAND PROCESSING *******/
 
-// FIXME:
+bool StepperController::parseStatus() {
+  if (command.parseVariable(CMD_START)) {
+    // start
+    command.success(start());
+  } else if (command.parseVariable(CMD_STOP)) {
+    // stop
+    command.success(stop());
+  } else if (command.parseVariable(CMD_HOLD)) {
+    // hold
+    command.success(hold());
+  } else if (command.parseVariable(CMD_RUN)) {
+    // run - not yet implemented FIXME
+  } else if (command.parseVariable(CMD_AUTO)) {
+    // auto - not yet implemented FIXME
+  } else if (command.parseVariable(CMD_ROTATE)) {
+    // rotate
+    command.extractValue();
+    char* end;
+    float number = strtof (command.value, &end);
+    int converted = end - command.value;
+    if (converted > 0) {
+      // valid number
+      rotate(number);
+      // rotate always counts as new command b/c rotation starts from scratch
+      command.success(true);
+    } else {
+      // no number, invalid value
+      command.errorValue();
+    }
+  }
+
+  // set command data if type defined
+  if (command.isTypeDefined()) {
+    getStepperStateStatusInfo(state->status, command.data, sizeof(command.data));
+  }
+
+  return(command.isTypeDefined());
+}
+
+bool StepperController::parseDirection() {
+
+  if (command.parseVariable(CMD_DIR)) {
+    // direction
+    command.extractValue();
+    if (command.parseValue(CMD_DIR_CW)) {
+      // clockwise
+      command.success(changeDirection(DIR_CW));
+    } else if (command.parseValue(CMD_DIR_CC)) {
+      // counter clockwise
+      command.success(changeDirection(DIR_CC));
+    } else if (command.parseValue(CMD_DIR_SWITCH)) {
+      // switch
+      command.success(changeDirection(-state->direction));
+    } else {
+      // invalid
+      command.errorValue();
+    }
+  }
+
+  // set command data if type defined
+  if (command.isTypeDefined()) {
+    getStepperStateDirectionInfo(state->direction, command.data, sizeof(command.data));
+  }
+
+  return(command.isTypeDefined());
+}
+
+bool StepperController::parseSpeed() {
+
+  if (command.parseVariable(CMD_SPEED)) {
+    // speed
+    command.extractValue();
+    command.extractUnits();
+
+    if (command.parseUnits(SPEED_RPM)) {
+      // speed rpm
+      char* end;
+      float number = strtof (command.value, &end);
+      int converted = end - command.value;
+      if (converted > 0) {
+        // valid number
+        command.success(changeSpeedRpm(number));
+        if(definitelyLessThan(state->rpm, number, 0.0001)) {
+          // could not set to rpm, hit the max --> set warning
+          command.warning(CMD_RET_WARN_MAX_RPM, CMD_RET_WARN_MAX_RPM_TEXT);
+        }
+      } else {
+        // no number, invalid value
+        command.errorValue();
+      }
+    //} else if (command.parseUnits(SPEED_FPM)) {
+      // speed fpm
+      // TODO
+    } else {
+      command.errorUnits();
+    }
+  }
+
+  // set command data if type defined
+  if (command.isTypeDefined()) {
+    getStepperStateSpeedInfo(state->rpm, command.data, sizeof(command.data));
+  }
+
+  return(command.isTypeDefined());
+}
+
+bool StepperController::parseMS() {
+
+  if (command.parseVariable(CMD_STEP)) {
+    // microstepping
+    command.extractValue();
+    if (command.parseValue(CMD_STEP_AUTO)) {
+      command.success(changeToAutoMicrosteppingMode());
+    } else {
+      int ms_mode = atoi(command.value);
+      command.success(changeMicrosteppingMode(ms_mode));
+    }
+  }
+
+  // set command data if type defined
+  if (command.isTypeDefined()) {
+    getStepperStateMSInfo(state->ms_auto, state->ms_mode, command.data, sizeof(command.data));
+  }
+
+  return(command.isTypeDefined());
+}
+
 void StepperController::parseCommand() {
 
-  SerialDeviceController::parseCommand();
+  DeviceController::parseCommand();
 
   if (command.isTypeDefined()) {
     // command processed successfully by parent function
-  } else if (parsePage()) {
-    // parse page command
-  }
-
-  // more additional, device specific commands
-
-  // regular commands
-  if (strcmp(command.variable, CMD_START) == 0) {
-    // start
-    assignCommandMessage();
-    start();
-  } else if (strcmp(command.variable, CMD_STOP) == 0) {
-    // stop
-    assignCommandMessage();
-    stop();
-  } else if (strcmp(command.variable, CMD_HOLD) == 0) {
-    // hold
-    assignCommandMessage();
-    hold();
-  } else if (strcmp(command.variable, CMD_MANUAL) == 0) {
-    // hold
-    assignCommandMessage();
-    manual();
-  } else if (strcmp(command.variable, CMD_ROTATE) == 0) {
-    // rotate
-    extractCommandParam(command.value);
-    assignCommandMessage();
-    rotate(atof(command.value));
-  } else if (strcmp(command.variable, CMD_SET) == 0) {
-    // calibrate
-    strcpy(command.type, TYPE_SET);
-    extractCommandParam(command.variable);
-    extractCommandParam(command.value);
-    assignCommandMessage();
-    // TODO: implement these commands properly
-    if (strcmp(command.variable, SET_STEP_FLOW) == 0) {
-      // step flow
-      strcpy(command.units, "volume/step");
-    } else {
-      strcpy(command.variable, ERROR_SET);
-      strcpy(command.value, ""); // reset
-      ret_val = CMD_RET_ERR_SET;
-    }
-  } else if (strcmp(command.variable, CMD_DIR) == 0) {
-    // direction
-    char direction[10];
-    extractCommandParam(direction);
-    strcpy(command.units, "cw/cc");
-    assignCommandMessage();
-    if (strcmp(direction, CMD_DIR_CW) == 0) {
-      strcpy(command.value, "1"); // TODO: get this from dir_CW
-      setDirection(DIR_CW);
-    } else if (strcmp(direction, CMD_DIR_CC) == 0) {
-      strcpy(command.value, "-1"); // TODO: get this from dir_CC
-      setDirection(DIR_CC);
-    } else if (strcmp(direction, CMD_DIR_CHANGE) == 0) {
-      int new_dir = -state->direction;
-      if (new_dir == DIR_CC) {
-        strcpy(command.value, "-1"); // TODO: get this from dir_CC
-      } else if (new_dir == DIR_CW) {
-        strcpy(command.value, "1"); // TODO: get this from dir_CC
-      }
-      setDirection(new_dir);
-    } else {
-      strcpy(command.variable, ERROR_DIR);
-      strcpy(command.units, ""); // reset
-      ret_val = CMD_RET_ERR_DIR;
-    }
-  } else if (strcmp(command.variable, CMD_STEP) == 0) {
-    // microstepping
-    extractCommandParam(command.value);
-    assignCommandMessage();
-    if (strcmp(command.value, CMD_STEP_AUTO) == 0) {
-      setAutoMicrosteppingMode();
-    } else {
-      int ms_mode = atoi(command.value);
-      if (!setMicrosteppingMode(ms_mode)) {
-          // invalid microstepping passed in
-          strcpy(command.variable, ERROR_MS);
-          strcpy(command.value, ""); // reset
-          ret_val = CMD_RET_ERR_MS;
-      }
-    }
-  } else if (strcmp(command.variable, CMD_SPEED) == 0) {
-    // speed
-    extractCommandParam(command.value);
-    extractCommandParam(command.units);
-    assignCommandMessage();
-    if (strcmp(command.units, SPEED_RPM) == 0) {
-      // speed rpm
-      float rpm = atof(command.value);
-
-      if (!setSpeedRpm(rpm)) {
-        strcpy(command.variable, WARN_SPEED_MAX);
-        sprintf(command.value, "%.2f", state->rpm);
-        ret_val = CMD_RET_WARN_MAX_RPM;
-      }
-
-    } else if (strcmp(command.units, SPEED_FPM) == 0) {
-      // speed fpm
-      // TODO:
-    } else {
-      // invalid speed
-      strcpy(command.variable, ERROR_SPEED);
-      strcpy(command.value, ""); // reset
-      strcpy(command.units, ""); // reset
-      ret_val = CMD_RET_ERR;
-    }
-  } else {
-    // no command found
-    strcpy(command.variable, ERROR_CMD);
-    ret_val = CMD_RET_ERR_CMD;
+  } else if (parseStatus()) {
+    // check for status commands
+  } else if (parseDirection()) {
+    // check for direction commands
+  } else if (parseSpeed()) {
+    // check for speed commands
+  //} else if (parseRamp()) {
+    // check for ramp commands - TODO
+  } else if (parseMS()) {
+    // check for microstepping commands
   }
 
 }

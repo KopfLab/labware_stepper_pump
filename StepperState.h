@@ -16,7 +16,7 @@
 
 /**** textual translations of state values ****/
 
-struct StepperState : public SerialDeviceState {
+struct StepperState : public DeviceState {
   int direction; // DIR_CW or DIR_CC
   bool ms_auto; // whether microstepping is in automatic mode or not
   int ms_index; // the index of the currently active microstep mode
@@ -26,28 +26,14 @@ struct StepperState : public SerialDeviceState {
 
   StepperState() {};
   // construct StepperState in autostepping mode
-  StepperState(bool locked, bool state_logging, bool data_logging, uint data_logging_period, uint8_t data_logging_type, int direction, int status, float rpm, bool locked) :
-    SerialDeviceState(locked, state_logging, data_logging, data_logging_period, data_logging_type), direction(direction), ms_auto(true), ms_index(-1), status(status), rpm(rpm) {};
+  StepperState(bool locked, bool state_logging, bool data_logging, uint data_logging_period, uint8_t data_logging_type, int direction, int status, float rpm) :
+    DeviceState(locked, state_logging, data_logging, data_logging_period, data_logging_type), direction(direction), ms_auto(true), ms_index(-1), status(status), rpm(rpm) {};
   // construct StepperState with specific ms mode
-  StepperState(bool locked, bool state_logging, bool data_logging, uint data_logging_period, uint8_t data_logging_type, int direction, int status, float rpm, bool locked, int ms_index) :
-    SerialDeviceState(locked, state_logging, data_logging, data_logging_period, data_logging_type), direction(direction), ms_auto(false), ms_index(ms_index), status(status), rpm(rpm){};
+  StepperState(bool locked, bool state_logging, bool data_logging, uint data_logging_period, uint8_t data_logging_type, int direction, int status, float rpm, int ms_index) :
+    DeviceState(locked, state_logging, data_logging, data_logging_period, data_logging_type), direction(direction), ms_auto(false), ms_index(ms_index), status(status), rpm(rpm){};
 };
 
-// data logging
-static void getStateDataLoggingText(bool data_logging, char* target, int size, char* pattern, bool include_key = true) {
-  #ifdef WEBHOOKS_DEBUG_ON
-    getStateStringText(CMD_DATA_LOG, "debug", target, size, pattern, include_key);
-  #else
-    getStateBooleanText(CMD_DATA_LOG, data_logging, CMD_DATA_LOG_ON, CMD_DATA_LOG_OFF, target, size, pattern, include_key);
-  #endif
-}
-
-static void getStepperStateStatusInfo(bool data_logging, char* target, int size, bool value_only = false) {
-  if (value_only) getStateDataLoggingText(data_logging, target, size, PATTERN_V_SIMPLE, false);
-  else getStateDataLoggingText(data_logging, target, size, PATTERN_KV_JSON_QUOTED, true);
-}
-
-// state info
+// state info (note: long label may not be necessary)
 struct StepperStateInfo {
    int value;
    char *short_label;
@@ -91,7 +77,7 @@ static void getStepperStateDirectionInfo(int direction, char* target, int size, 
   getStateStringText("dir", DIR_INFO[i].short_label, target, size, pattern, include_key);
 }
 
-static void getStepperStateDirectionnfo(int direction char* target, int size, bool value_only = false) {
+static void getStepperStateDirectionInfo(int direction, char* target, int size, bool value_only = false) {
   if (value_only) getStepperStateDirectionInfo(direction, target, size, PATTERN_V_SIMPLE, false);
   else getStepperStateDirectionInfo(direction, target, size, PATTERN_KV_JSON_QUOTED, true);
 }
