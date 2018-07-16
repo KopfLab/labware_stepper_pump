@@ -32,7 +32,8 @@ class StepperController : public DeviceController {
     StepperController() {};
 
     StepperController (int reset_pin, DeviceDisplay* lcd, StepperBoard* board, StepperDriver* driver, StepperMotor* motor, StepperState* state) :
-      DeviceController(reset_pin, lcd), board(board), driver(driver), motor(motor), state(state) {
+      //DeviceController(reset_pin, lcd), board(board), driver(driver), motor(motor), state(state) {
+      DeviceController(reset_pin), board(board), driver(driver), motor(motor), state(state) {
         driver->calculateRpmLimits(board->max_speed, motor->steps, motor->gearing);
     };
 
@@ -70,6 +71,9 @@ class StepperController : public DeviceController {
 /**** SETUP AND LOOP ****/
 
 void StepperController::init() {
+
+  DeviceController::init();
+
   stepper = AccelStepper(AccelStepper::DRIVER, board->step, board->dir);
   stepper.setEnablePin(board->enable);
   stepper.setPinsInverted	(
@@ -81,6 +85,8 @@ void StepperController::init() {
   stepper.setMaxSpeed(board->max_speed);
 
   // microstepping
+  state->ms_index = findMicrostepIndexForRpm(state->rpm);
+  state->ms_mode = driver->getMode(state->ms_index);
   pinMode(board->ms1, OUTPUT);
   pinMode(board->ms2, OUTPUT);
   pinMode(board->ms3, OUTPUT);
@@ -91,7 +97,6 @@ void StepperController::init() {
     }
   #endif
 
-  DeviceController::init();
   updateStepper();
 }
 
@@ -116,7 +121,7 @@ void StepperController::update() {
 void StepperController::saveDS() {
   EEPROM.put(STATE_ADDRESS, *state);
   #ifdef STATE_DEBUG_ON
-    Serial.println("INFO: pump state saved in memory (if any updates were necessary)");
+    Serial.println("INFO: stepper state saved in memory (if any updates were necessary)");
   #endif
 }
 
@@ -225,7 +230,7 @@ bool StepperController::changeSpeedRpm(float rpm) {
   state->ms_index = findMicrostepIndexForRpm(rpm);
   state->ms_mode = driver->getMode(state->ms_index); // tracked for convenience
   setSpeedWithSteppingLimit(rpm);
-  bool changed = state->ms_mode != original_ms_mode | !approximatelyEqual(state->rpm, rpm, 0.0001);
+  bool changed = state->ms_mode != original_ms_mode | fabs(state->rpm - original_rpm) > 0.0001;
 
   #ifdef STEPPER_DEBUG_ON
     if (changed)
@@ -284,7 +289,7 @@ bool StepperController::changeMicrosteppingMode(int ms_mode) {
     return(false);
   }
 
-  bool changed = state->ms_auto | state->ms_index != ms_index;
+  bool changed = state->ms_auto | (state->ms_index != ms_index);
   #ifdef STEPPER_DEBUG_ON
     if (changed)
       Serial.printf("INFO: activating microstepping index %d for mode %d\n", ms_index, ms_mode);
@@ -314,9 +319,9 @@ int StepperController::findMicrostepIndexForRpm(float rpm) {
 }
 
 // start, stop, hold
-bool StepperController::start() { changeStatus(STATUS_ON); }
-bool StepperController::stop() { changeStatus(STATUS_OFF); }
-bool StepperController::hold() { changeStatus(STATUS_HOLD); }
+bool StepperController::start() { return(changeStatus(STATUS_ON)); }
+bool StepperController::stop() { return(changeStatus(STATUS_OFF)); }
+bool StepperController::hold() { return(changeStatus(STATUS_HOLD)); }
 
 // number of rotations
 long StepperController::rotate(float number) {
@@ -422,7 +427,7 @@ bool StepperController::parseSpeed() {
       if (converted > 0) {
         // valid number
         command.success(changeSpeedRpm(number));
-        if(definitelyLessThan(state->rpm, number, 0.0001)) {
+        if( (state->rpm - number) < 0.0 ) {
           // could not set to rpm, hit the max --> set warning
           command.warning(CMD_RET_WARN_MAX_RPM, CMD_RET_WARN_MAX_RPM_TEXT);
         }

@@ -32,7 +32,7 @@
 *.zip
 
 # PCB
-*pcb
+*pcb_dev
 
 # docs
 *.pdf

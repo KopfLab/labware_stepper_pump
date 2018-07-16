@@ -3,7 +3,7 @@
 
 // debugging options
 #define CLOUD_DEBUG_ON
-//#define WEBHOOKS_DEBUG_ON
+#define WEBHOOKS_DEBUG_ON
 #define STATE_DEBUG_ON
 //#define DATA_DEBUG_ON
 //#define SERIAL_DEBUG_ON
@@ -11,8 +11,8 @@
 #define STEPPER_DEBUG_ON
 
 // keep track of installed version
-#define STATE_VERSION    1 // update whenver structure changes
-#define DEVICE_VERSION  "pump 0.2.0" // update with every code update
+#define STATE_VERSION    2 // update whenver structure changes
+#define DEVICE_VERSION  "pump 0.2.5" // update with every code update
 
 // M800 controller
 #include "StepperController.h"

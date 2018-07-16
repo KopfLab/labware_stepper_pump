@@ -97,8 +97,8 @@ static void getStepperStateSpeedInfo(float rpm, char* target, int size, bool val
 static void getStepperStateMSInfo(bool ms_auto, int ms_mode, char* target, int size, char* pattern, bool include_key = true) {
   char ms_text[10];
   (ms_auto) ?
-    snprintf(ms_text, sizeof(ms_text), "%dA", ms_auto) :
-    snprintf(ms_text, sizeof(ms_text), "%dA", ms_auto);
+    snprintf(ms_text, sizeof(ms_text), "%dA", ms_mode) :
+    snprintf(ms_text, sizeof(ms_text), "%d", ms_mode);
   getStateStringText("ms", ms_text, target, size, pattern, include_key);
 }
 
