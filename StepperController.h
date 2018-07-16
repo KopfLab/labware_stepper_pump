@@ -11,6 +11,7 @@ class StepperController : public DeviceController {
   private:
 
     // internal functions
+    void construct();
     void updateStepper(); // update stepper object
     float calculateSpeed(); // calculate speed based on settings
     int findMicrostepIndexForRpm(float rpm); // finds the correct ms index for the requested rpm (takes ms_auto into consideration)
@@ -34,7 +35,7 @@ class StepperController : public DeviceController {
     StepperController (int reset_pin, DeviceDisplay* lcd, StepperBoard* board, StepperDriver* driver, StepperMotor* motor, StepperState* state) :
       //DeviceController(reset_pin, lcd), board(board), driver(driver), motor(motor), state(state) {
       DeviceController(reset_pin), board(board), driver(driver), motor(motor), state(state) {
-        driver->calculateRpmLimits(board->max_speed, motor->steps, motor->gearing);
+        construct();
     };
 
     // methods
@@ -58,7 +59,11 @@ class StepperController : public DeviceController {
     void saveDS(); // save device state to EEPROM
     bool restoreDS(); // load device state from EEPROM
 
+    bool assembleDataLog();
+    void logSpeedChange();
+
     void assembleStateInformation();
+    void updateStateInformation();
 
     void parseCommand();
     bool parseStatus();
@@ -69,6 +74,15 @@ class StepperController : public DeviceController {
 };
 
 /**** SETUP AND LOOP ****/
+
+void StepperController::construct() {
+  driver->calculateRpmLimits(board->max_speed, motor->steps, motor->gearing);
+  data.resize(2);
+  // same index to allow for step transition logging
+  data[0] = DeviceData(1, "speed", "rpm", 1);
+  data[0].setAutoClear(false); // not cleared during auto clear
+  data[1] = DeviceData(1, "speed", "rpm", 1);
+}
 
 void StepperController::init() {
 
@@ -98,6 +112,7 @@ void StepperController::init() {
   #endif
 
   updateStepper();
+  logSpeedChange();
 }
 
 // loop function
@@ -241,6 +256,7 @@ bool StepperController::changeSpeedRpm(float rpm) {
 
   if (changed) {
     updateStepper();
+    logSpeedChange();
     saveDS();
   }
   return(changed);
@@ -332,6 +348,24 @@ long StepperController::rotate(float number) {
   return(steps);
 }
 
+/***** DATA INFORMATION *****/
+
+bool StepperController::assembleDataLog() { DeviceController::assembleDataLog(false); }
+
+void StepperController::logSpeedChange() {
+  if (data[0].newest_value_valid) {
+    data[1].setNewestValue(data[0].getValue());
+    data[1].setNewestDataTime(millis() - 1);
+    data[1].saveNewestValue(false); // no averaging
+  }
+  data[0].setNewestValue(state->rpm);
+  data[0].setNewestDataTime(millis());
+  data[0].saveNewestValue(false); // no averaging
+  last_data_log = millis();
+  logData();
+  clearData(false);
+}
+
 /****** STATE INFORMATION *******/
 
 void StepperController::assembleStateInformation() {
@@ -341,6 +375,31 @@ void StepperController::assembleStateInformation() {
   getStepperStateDirectionInfo(state->direction, pair, sizeof(pair)); addToStateInformation(pair);
   getStepperStateSpeedInfo(state->rpm, pair, sizeof(pair)); addToStateInformation(pair);
   getStepperStateMSInfo(state->ms_auto, state->ms_mode, pair, sizeof(pair)); addToStateInformation(pair);
+}
+
+void StepperController::updateStateInformation() {
+  DeviceController::updateStateInformation();
+
+  // LCD update
+  if (lcd) {
+
+    lcd->printLine(2, "Status: ");
+    getStepperStateStatusInfo(state->status, lcd_buffer, sizeof(lcd_buffer), true);
+    lcd->print(lcd_buffer);
+    lcd->print(" (MS");
+    getStepperStateMSInfo(state->ms_auto, state->ms_mode, lcd_buffer, sizeof(lcd_buffer), true);
+    lcd->print(lcd_buffer);
+    lcd->print(")");
+
+    lcd->printLine(3, "Speed: ");
+    getStepperStateSpeedInfo(state->rpm, lcd_buffer, sizeof(lcd_buffer), true);
+    lcd->print(lcd_buffer);
+
+    lcd->printLine(4, "Direction: ");
+    getStepperStateDirectionInfo(state->direction, lcd_buffer, sizeof(lcd_buffer), true);
+    lcd->print(lcd_buffer);
+
+  }
 }
 
 /****** WEB COMMAND PROCESSING *******/
