@@ -60,7 +60,7 @@ class StepperController : public DeviceController {
     bool restoreDS(); // load device state from EEPROM
 
     bool assembleDataLog();
-    void logSpeedChange();
+    void logRpm();
 
     void assembleStateInformation();
     void updateStateInformation();
@@ -112,7 +112,6 @@ void StepperController::init() {
   #endif
 
   updateStepper();
-  logSpeedChange();
 }
 
 // loop function
@@ -179,6 +178,9 @@ void StepperController::updateStepper() {
     stepper.setSpeed(0);
     stepper.disableOutputs();
   }
+
+  // log rpm (if necessary - determined in fumction)
+  logRpm();
 }
 
 float StepperController::calculateSpeed() {
@@ -256,7 +258,6 @@ bool StepperController::changeSpeedRpm(float rpm) {
 
   if (changed) {
     updateStepper();
-    logSpeedChange();
     saveDS();
   }
   return(changed);
@@ -350,20 +351,49 @@ long StepperController::rotate(float number) {
 
 /***** DATA INFORMATION *****/
 
-bool StepperController::assembleDataLog() { DeviceController::assembleDataLog(false); }
-
-void StepperController::logSpeedChange() {
-  if (data[0].newest_value_valid) {
-    data[1].setNewestValue(data[0].getValue());
-    data[1].setNewestDataTime(millis() - 1);
-    data[1].saveNewestValue(false); // no averaging
-  }
-  data[0].setNewestValue(state->rpm);
+bool StepperController::assembleDataLog() {
+  // always reset time offset to 0
   data[0].setNewestDataTime(millis());
   data[0].saveNewestValue(false); // no averaging
-  last_data_log = millis();
-  logData();
-  clearData(false);
+  // individual time offsets
+  return(DeviceController::assembleDataLog(false));
+}
+
+void StepperController::logRpm() {
+
+  // new rpm
+  float new_rpm;
+  if (state->status == STATUS_ON || state->status == STATUS_ROTATE) {
+    new_rpm = state->rpm * state->direction;
+  } else {
+    new_rpm = 0.0;
+  }
+
+  // log if first time call (i.e. at startup) or rpm has changed
+  bool log_rpm = !data[0].newest_value_valid || fabs(new_rpm - data[0].getValue()) > 0.0001;
+
+  // log
+  if (log_rpm) {
+
+    #ifdef DATA_DEBUG_ON
+      (data[0].newest_value_valid) ?
+        Serial.printf("INFO: logging speed shift from %.4f to %.4frpm\n", data[0].getValue(), new_rpm) :
+        Serial.printf("INFO: re-logging speed at startup (%.4frpm)\n", new_rpm);
+    #endif
+
+    if (data[0].newest_value_valid) {
+      data[1].setNewestValue(data[0].getValue());
+      data[1].setNewestDataTime(millis() - 1);
+      data[1].saveNewestValue(false); // no averaging
+    }
+    // set newet value (date time and averaging will happens assembledatalog)
+    data[0].setNewestValue(new_rpm);
+    data[0].setNewestDataTime(millis());
+    data[0].saveNewestValue(false); // no averagings
+    last_data_log = millis();
+    logData();
+    clearData(false);
+  }
 }
 
 /****** STATE INFORMATION *******/
@@ -378,6 +408,8 @@ void StepperController::assembleStateInformation() {
 }
 
 void StepperController::updateStateInformation() {
+
+  // state information
   DeviceController::updateStateInformation();
 
   // LCD update
