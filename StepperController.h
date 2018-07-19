@@ -33,8 +33,7 @@ class StepperController : public DeviceController {
     StepperController() {};
 
     StepperController (int reset_pin, DeviceDisplay* lcd, StepperBoard* board, StepperDriver* driver, StepperMotor* motor, StepperState* state) :
-      //DeviceController(reset_pin, lcd), board(board), driver(driver), motor(motor), state(state) {
-      DeviceController(reset_pin), board(board), driver(driver), motor(motor), state(state) {
+      DeviceController(reset_pin, lcd), board(board), driver(driver), motor(motor), state(state) {
         construct();
     };
 
@@ -120,6 +119,7 @@ void StepperController::update() {
     // WARNING: FIXME known bug, when power out, saved rotate status will lead to immediate stop of pump
     if (stepper.distanceToGo() == 0) {
       changeStatus(STATUS_OFF); // disengage if reached target location
+      updateStateInformation();
     } else {
       stepper.runSpeedToPosition();
     }
@@ -415,21 +415,19 @@ void StepperController::updateStateInformation() {
   // LCD update
   if (lcd) {
 
-    lcd->printLine(2, "Status: ");
-    getStepperStateStatusInfo(state->status, lcd_buffer, sizeof(lcd_buffer), true);
-    lcd->print(lcd_buffer);
-    lcd->print(" (MS");
-    getStepperStateMSInfo(state->ms_auto, state->ms_mode, lcd_buffer, sizeof(lcd_buffer), true);
-    lcd->print(lcd_buffer);
-    lcd->print(")");
+    snprintf(lcd_buffer, sizeof(lcd_buffer), "%s", "Status: ");
+    getStepperStateStatusInfo(state->status, lcd_buffer + strlen(lcd_buffer), sizeof(lcd_buffer) - strlen(lcd_buffer), true);
+    lcd->printLine(2, lcd_buffer);
 
-    lcd->printLine(3, "Speed: ");
-    getStepperStateSpeedInfo(state->rpm, lcd_buffer, sizeof(lcd_buffer), true);
-    lcd->print(lcd_buffer);
+    snprintf(lcd_buffer, sizeof(lcd_buffer), "%s", "Speed: ");
+    getStepperStateSpeedInfo(state->rpm, lcd_buffer + strlen(lcd_buffer), sizeof(lcd_buffer) - strlen(lcd_buffer), true);
+    lcd->printLine(3, lcd_buffer);
 
-    lcd->printLine(4, "Direction: ");
-    getStepperStateDirectionInfo(state->direction, lcd_buffer, sizeof(lcd_buffer), true);
-    lcd->print(lcd_buffer);
+    snprintf(lcd_buffer, sizeof(lcd_buffer), "%s", "Dir: ");
+    getStepperStateDirectionInfo(state->direction, lcd_buffer + strlen(lcd_buffer), sizeof(lcd_buffer) - strlen(lcd_buffer), true);
+    snprintf(lcd_buffer + strlen(lcd_buffer), sizeof(lcd_buffer) - strlen(lcd_buffer), "%s", "  MS: ");
+    getStepperStateMSInfo(state->ms_auto, state->ms_mode, lcd_buffer + strlen(lcd_buffer), sizeof(lcd_buffer) - strlen(lcd_buffer), true);
+    lcd->printLine(4, lcd_buffer);
 
   }
 }

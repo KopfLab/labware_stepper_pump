@@ -3,7 +3,7 @@
 
 // debugging options
 #define CLOUD_DEBUG_ON
-#define WEBHOOKS_DEBUG_ON
+//#define WEBHOOKS_DEBUG_ON
 #define STATE_DEBUG_ON
 //#define DATA_DEBUG_ON
 //#define SERIAL_DEBUG_ON
@@ -11,8 +11,8 @@
 #define STEPPER_DEBUG_ON
 
 // keep track of installed version
-#define STATE_VERSION    2 // update whenver structure changes
-#define DEVICE_VERSION  "pump 0.3.2" // update with every code update
+#define STATE_VERSION    4 // change whenver StepperState structure changes
+#define DEVICE_VERSION  "pump 0.4.2" // update with every code update
 
 // M800 controller
 #include "StepperController.h"
@@ -34,7 +34,7 @@ StepperState* state = new StepperState(
   /* locked */                    false,
   /* state_logging */             true,
   /* data_logging */              false,
-  /* data_logging_period */       600, // in seconds
+  /* data_logging_period */       3600, // in seconds
   /* data_logging_type */         LOG_BY_TIME, // log by time
   /* direction */                 DIR_CW, // start clockwise
   /* status */                    STATUS_OFF, // start off

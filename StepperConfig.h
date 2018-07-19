@@ -28,12 +28,12 @@ struct MicrostepMode {
 
 // driver
 struct StepperDriver {
-  const int dir_cw; // is clockwise LOW or HIGH?
-  const int step_on; // is a step made on LOW or HIGH?
-  const int enable_on; // is enable on LOW or HIGH?
+  const bool dir_cw; // is clockwise LOW or HIGH?
+  const bool step_on; // is a step made on LOW or HIGH?
+  const bool enable_on; // is enable on LOW or HIGH?
   const int ms_modes_n; // number of microstepping modes
   MicrostepMode* ms_modes; // microstepping modes
-  StepperDriver(int dir_cw, int step_on, int enable_on, MicrostepMode* ms_modes, int ms_modes_n) :
+  StepperDriver(bool dir_cw, bool step_on, bool enable_on, MicrostepMode* ms_modes, int ms_modes_n) :
     dir_cw(dir_cw), step_on(step_on), enable_on(enable_on), ms_modes_n(ms_modes_n) {
       // allocate microstep modes (FIXME: is there a better way to do this with pointers?)
       this->ms_modes = new MicrostepMode[ms_modes_n];

@@ -11,7 +11,6 @@
 #define STATUS_ROTATE    5
 #define STATUS_TRIGGER   6 // TODO: implement signal triggering mode
 #define STEP_FLOW_UNDEF -1
-#define STATE_VERSION    3 // change whenver StepperState structure changes
 #define STATE_ADDRESS    0 // EEPROM storage location
 
 /**** textual translations of state values ****/
