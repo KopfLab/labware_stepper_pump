@@ -30,3 +30,9 @@
 *.app
 *_v*.fzz
 *.zip
+
+# PCB
+*pcb_dev
+
+# docs
+*.pdf
