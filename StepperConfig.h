@@ -127,7 +127,7 @@ MicrostepMode DRV8825_MICROSTEP_MODES[DRV8825_MICROSTEP_MODES_N] =
   };
 
 StepperDriver DRV8825(
-  /* dir cw */      LOW,
+  /* dir cw */      HIGH,
   /* step on */     HIGH,
   /* enable on */   HIGH,
   /* modes */       DRV8825_MICROSTEP_MODES,

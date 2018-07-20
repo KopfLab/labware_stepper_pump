@@ -12,7 +12,7 @@ class StepperController : public DeviceController {
 
     // internal functions
     void construct();
-    void updateStepper(); // update stepper object
+    void updateStepper(bool init = false); // update stepper object
     float calculateSpeed(); // calculate speed based on settings
     int findMicrostepIndexForRpm(float rpm); // finds the correct ms index for the requested rpm (takes ms_auto into consideration)
     bool setSpeedWithSteppingLimit(float rpm); // sets state->speed and returns true if request set, false if had to set to limit
@@ -26,6 +26,9 @@ class StepperController : public DeviceController {
     // state
     StepperState* state;
     DeviceState* ds = state;
+
+    // startup
+    bool startup_rpm_logged = false;
 
   public:
 
@@ -90,8 +93,8 @@ void StepperController::init() {
   stepper = AccelStepper(AccelStepper::DRIVER, board->step, board->dir);
   stepper.setEnablePin(board->enable);
   stepper.setPinsInverted	(
-            driver->step_on != HIGH,
             driver->dir_cw != LOW,
+            driver->step_on != HIGH,
             driver->enable_on != LOW
         );
   stepper.disableOutputs();
@@ -110,7 +113,7 @@ void StepperController::init() {
     }
   #endif
 
-  updateStepper();
+  updateStepper(true);
 }
 
 // loop function
@@ -126,6 +129,13 @@ void StepperController::update() {
   } else {
     stepper.runSpeed();
   }
+
+  // log rpm once startup is complete
+  if (startup_logged && !startup_rpm_logged) {
+    logRpm();
+    startup_rpm_logged = true;
+  }
+
   DeviceController::update();
 }
 
@@ -156,7 +166,7 @@ bool StepperController::restoreDS(){
 
 /**** UPDATING STEPPER ****/
 
-void StepperController::updateStepper() {
+void StepperController::updateStepper(bool init) {
   // update microstepping
   if (state->ms_index >= 0 && state->ms_index < driver->ms_modes_n) {
     digitalWrite(board->ms1, driver->ms_modes[state->ms_index].ms1);
@@ -179,8 +189,8 @@ void StepperController::updateStepper() {
     stepper.disableOutputs();
   }
 
-  // log rpm (if necessary - determined in fumction)
-  logRpm();
+  // log rpm (if necessary - determined in function)
+  if (!init) logRpm();
 }
 
 float StepperController::calculateSpeed() {
