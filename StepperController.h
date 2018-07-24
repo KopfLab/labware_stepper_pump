@@ -402,6 +402,7 @@ void StepperController::logRpm() {
     data[0].saveNewestValue(false); // no averagings
     last_data_log = millis();
     logData();
+    updateDataInformation();
     clearData(false);
   }
 }
