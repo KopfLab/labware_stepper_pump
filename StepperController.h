@@ -46,6 +46,7 @@ class StepperController : public DeviceController {
 
     float getMaxRpm(); // returns the maximum rpm for the pump
 
+    bool changeDataLogging (bool on);
     bool changeStatus(int status);
     bool changeDirection(int direction);
     bool changeSpeedRpm(float rpm); // return false if had to limit speed, true if taking speed directly
@@ -61,6 +62,7 @@ class StepperController : public DeviceController {
     void saveDS(); // save device state to EEPROM
     bool restoreDS(); // load device state from EEPROM
 
+    void clearData(bool all) ;
     bool assembleDataLog();
     void logRpm();
 
@@ -202,6 +204,12 @@ float StepperController::calculateSpeed() {
 }
 
 /* DEVICE STATE CHANGE FUNCTIONS */
+
+bool StepperController::changeDataLogging (bool on) {
+  bool changed = DeviceController::changeDataLogging (on);
+  if (on && changed) logRpm();
+  return(changed);
+}
 
 bool StepperController::changeStatus(int status) {
 
@@ -360,6 +368,11 @@ long StepperController::rotate(float number) {
 }
 
 /***** DATA INFORMATION *****/
+
+void StepperController::clearData(bool all) {
+  // never clear persistent data
+  DeviceController::clearData(false);
+}
 
 bool StepperController::assembleDataLog() {
   // always reset time offset to 0

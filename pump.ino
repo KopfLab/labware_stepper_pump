@@ -12,7 +12,7 @@
 
 // keep track of installed version
 #define STATE_VERSION    4 // change whenver StepperState structure changes
-#define DEVICE_VERSION  "pump 0.4.3" // update with every code update
+#define DEVICE_VERSION  "pump 0.4.4" // update with every code update
 
 // M800 controller
 #include "StepperController.h"
